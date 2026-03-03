@@ -1,11 +1,87 @@
 """
 Retriever for searching relevant document chunks.
+Supports both semantic search and timestamp-based retrieval.
 """
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.retrievers import BaseRetriever
 from typing import List
+import re
 from app.core.config import settings
+
+
+def extract_timestamp_from_query(query: str) -> str:
+    """
+    Extract timestamp from user query.
+    
+    Args:
+        query: User's question
+        
+    Returns:
+        Timestamp string (e.g., "02:51") or None
+    """
+    # Match patterns like: 2:51, 02:51, 3:20, etc.
+    patterns = [
+        r'\b(\d{1,2}):(\d{2})\b',  # 2:51 or 02:51
+        r'\b(\d{1,2})\.(\d{2})\b',  # 2.51
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, query)
+        if match:
+            minutes = int(match.group(1))
+            seconds = int(match.group(2))
+            # Normalize to MM:SS format
+            return f"{minutes:02d}:{seconds:02d}"
+    
+    return None
+
+
+def retrieve_by_timestamp(
+    vector_store: FAISS,
+    timestamp: str,
+    k: int = 3
+) -> List:
+    """
+    Retrieve documents near a specific timestamp.
+    
+    Args:
+        vector_store: FAISS vector store
+        timestamp: Target timestamp (e.g., "02:51")
+        k: Number of documents to retrieve
+        
+    Returns:
+        List of documents near the timestamp
+    """
+    print(f"🕐 Retrieving content near timestamp: {timestamp}")
+    
+    # Get all documents
+    all_docs = vector_store.similarity_search("", k=1000)
+    
+    # Filter documents by timestamp proximity
+    target_minutes, target_seconds = map(int, timestamp.split(':'))
+    target_total_seconds = target_minutes * 60 + target_seconds
+    
+    docs_with_distance = []
+    for doc in all_docs:
+        doc_timestamp = doc.metadata.get('timestamp', '00:00')
+        try:
+            doc_minutes, doc_seconds = map(int, doc_timestamp.split(':'))
+            doc_total_seconds = doc_minutes * 60 + doc_seconds
+            
+            # Calculate time distance
+            distance = abs(doc_total_seconds - target_total_seconds)
+            docs_with_distance.append((doc, distance))
+        except:
+            continue
+    
+    # Sort by distance and get top k
+    docs_with_distance.sort(key=lambda x: x[1])
+    nearest_docs = [doc for doc, _ in docs_with_distance[:k]]
+    
+    print(f"✅ Found {len(nearest_docs)} documents near {timestamp}")
+    
+    return nearest_docs
 
 
 def create_retriever(

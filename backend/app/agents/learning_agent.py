@@ -14,22 +14,40 @@ from app.rag.pipeline import ask_question as rag_ask_question
 
 
 # Conversational Prompt Template
-CONVERSATIONAL_PROMPT = """You are an AI tutor helping students learn from YouTube videos.
+CONVERSATIONAL_PROMPT = """You are an AI tutor helping students learn from educational content.
 
-Previous conversation:
+PREVIOUS CONVERSATION:
 {chat_history}
 
-Current question: {question}
+RELEVANT CONTENT:
+{context}
 
-Video context: {context}
+CURRENT QUESTION: {question}
 
-Provide a helpful, educational answer that:
-1. Uses ONLY information from the video context
-2. References the conversation history if relevant
-3. Includes timestamps when helpful
-4. Is clear and easy to understand
+INSTRUCTIONS:
+- Answer the current question directly and concisely
+- Reference previous conversation ONLY if directly relevant to this question
+- Do not recap or summarize previous discussion unnecessarily
+- Do not add introductions or conclusions
+- Start immediately with the answer
 
-Answer:"""
+TIMESTAMP HANDLING:
+- If the user mentions a timestamp (e.g., "at 2:51"), explain what was discussed at that point
+- Interpret timestamp references as requests to explain specific content
+- Do not ask for clarification if the concept can be identified from the transcript
+
+LENGTH:
+- Simple questions: 3-5 sentences
+- Explanatory questions: 1 short paragraph
+- Complex questions: 2 paragraphs maximum
+
+QUALITY:
+- Each sentence adds new value
+- Explain mechanisms clearly
+- Stay focused on the specific question asked
+- End immediately after answering
+
+YOUR ANSWER:"""
 
 
 def chat_with_agent(
@@ -58,12 +76,11 @@ def chat_with_agent(
         # Get answer from RAG
         rag_result = rag_ask_question(video_id, question)
         
-        # Get chat history
-        chat_history = memory.load_memory_variables({})
+        # Get chat history from messages
+        messages = memory.messages
         history_text = ""
         
-        if chat_history.get("chat_history"):
-            messages = chat_history["chat_history"]
+        if messages:
             history_text = "\n".join([
                 f"{'Student' if msg.type == 'human' else 'Tutor'}: {msg.content}"
                 for msg in messages[-4:]  # Last 4 messages
@@ -87,10 +104,8 @@ def chat_with_agent(
         })
         
         # Save to memory
-        memory.save_context(
-            {"question": question},
-            {"answer": answer}
-        )
+        memory.add_user_message(question)
+        memory.add_ai_message(answer)
         
         response = {
             "answer": answer,
