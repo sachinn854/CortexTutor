@@ -1,13 +1,16 @@
 """
 Main FastAPI application entry point.
+Serves both API and frontend.
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from app.core.config import settings
 from app.core.rate_limiter import RateLimitMiddleware
 from app.core.timeout import TimeoutMiddleware
 from app.core.monitoring import PerformanceMiddleware, global_monitor
+import os
 
 app = FastAPI(
     title=settings.app_name,
@@ -41,11 +44,12 @@ async def startup_event():
     """Initialize services on startup."""
     print(f"🚀 Starting {settings.app_name} v{settings.app_version}")
     print(f"📊 Debug mode: {settings.debug}")
-    print(f"🤖 LLM: Ollama ({settings.ollama_model}) - LOCAL & FREE!")
+    print(f"🤖 LLM: Groq ({settings.groq_model}) - FAST & FREE!")
     print(f"🔍 Embeddings: {settings.embedding_model}")
     print(f"💾 Vector DB: {settings.vector_db_type}")
     print(f"⚡ Rate Limit: 60 req/min")
     print(f"⏱️  Timeout: 300s")
+    print(f"🌐 Frontend: http://localhost:8000")
 
 
 @app.on_event("shutdown")
@@ -54,15 +58,26 @@ async def shutdown_event():
     print("👋 Shutting down...")
 
 
+# Frontend path
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend")
+
 @app.get("/")
-async def root():
-    """Root endpoint - health check."""
-    return {
-        "message": f"Welcome to {settings.app_name}",
-        "version": settings.app_version,
-        "status": "running",
-        "docs": "/docs",
-    }
+async def serve_frontend():
+    """Serve frontend HTML."""
+    html_path = os.path.join(frontend_dir, "index.html")
+    if not os.path.exists(html_path):
+        return {"error": "Frontend not found", "path": html_path}
+    return FileResponse(html_path)
+
+@app.get("/styles.css")
+async def serve_css():
+    """Serve CSS file."""
+    return FileResponse(os.path.join(frontend_dir, "styles.css"))
+
+@app.get("/app.js")
+async def serve_js():
+    """Serve JS file."""
+    return FileResponse(os.path.join(frontend_dir, "app.js"))
 
 
 @app.get("/health")
