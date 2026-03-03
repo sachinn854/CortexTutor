@@ -16,9 +16,10 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
     
-    # Ollama Configuration (Local LLM - FREE!)
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"  # Fast, good quality (2GB)
+    # Groq Configuration (Fast & Free API)
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama-3.1-8b-instant"  # Fast model
+    # Other options: "llama-3.3-70b-versatile", "mixtral-8x7b-32768"
     
     # Embedding Model
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
@@ -28,9 +29,9 @@ class Settings(BaseSettings):
     vector_db_path: str = "./vector_db"
     
     # RAG Configuration
-    chunk_size: int = 300  # Very small chunks to fit Groq free tier
-    chunk_overlap: int = 50  # Minimal overlap
-    retrieval_top_k: int = 2  # Only 2 chunks to reduce tokens
+    chunk_size: int = 800  # Larger chunks for better context
+    chunk_overlap: int = 150  # More overlap for continuity
+    retrieval_top_k: int = 5  # More chunks for better coverage
     
     # Server Configuration
     host: str = "0.0.0.0"
