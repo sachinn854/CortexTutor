@@ -14,38 +14,81 @@ from app.rag.vector_store import load_vector_store
 
 
 # QA Prompt Template (for specific questions)
-QA_PROMPT_TEMPLATE = """You are a friendly AI tutor helping students learn from YouTube videos.
+QA_PROMPT_TEMPLATE = """You are an expert AI tutor helping students understand educational content.
 
-VIDEO TRANSCRIPT CONTEXT:
+TRANSCRIPT CONTENT:
 {context}
 
 STUDENT'S QUESTION: {question}
 
 INSTRUCTIONS:
-- Answer in a clear, conversational, and helpful way
-- Use ONLY information from the transcript above
-- Explain concepts simply, as if talking to a friend
-- If the transcript doesn't have enough info, say so honestly
-- Keep your answer concise (2-3 paragraphs max)
-- Don't mention timestamps in your answer (they're provided separately)
+- Answer clearly and directly - start immediately with the answer
+- Base your answer strictly on the transcript content
+- Do not add outside knowledge or related topics unless asked
+- Do not add introductions, recaps, or closing remarks
+- Do not repeat previous conversation unless directly relevant
+
+TIMESTAMP HANDLING:
+- If the user refers to a timestamp (e.g., "at 2:51" or "around 3:20"), locate and explain the concept discussed at that point
+- Treat timestamps as references to specific content in the video
+- Do not ask the user to restate the concept if it can be inferred from the transcript
+- Interpret the user's intent - they want to know what was explained at that time
+
+LENGTH CONTROL:
+- For simple definition questions: 3-4 sentences only
+- For explanatory questions: 1 short paragraph (4-6 sentences)
+- For complex questions: 2 paragraphs maximum
+
+QUALITY:
+- Each sentence must add new information
+- Explain HOW things work, not just WHAT they are
+- Use specific details from the content
+- End immediately after completing the explanation
+
+If the transcript lacks information, state this briefly and explain what IS covered.
 
 YOUR ANSWER:"""
 
 
 # Summary Prompt Template (for lecture overview)
-SUMMARY_PROMPT_TEMPLATE = """You are a friendly AI tutor helping students understand a YouTube video.
+SUMMARY_PROMPT_TEMPLATE = """You are an expert content summarizer specializing in educational videos.
 
-Read the transcript below and create a helpful summary.
-
-FULL LECTURE TRANSCRIPT:
+TRANSCRIPT SECTIONS:
 {context}
 
-Please provide:
-1. **Main Topic** (1-2 sentences): What is this video about?
-2. **Key Concepts** (3-5 bullet points): What are the main ideas?
-3. **What You'll Learn** (2-3 bullet points): Key takeaways for students
+TASK:
+Analyze the transcript and create a clear, structured summary that explains the core concepts.
 
-Keep it conversational and easy to understand!
+CRITICAL INSTRUCTIONS:
+1. Each sentence must introduce a NEW meaningful point - avoid repetition
+2. Focus on explaining HOW and WHY, not just WHAT
+3. Connect ideas logically to show relationships between concepts
+4. Use specific details from the content, not generic statements
+5. Write exactly 8-10 distinct sentences, each adding unique value
+
+STRUCTURE YOUR SUMMARY:
+
+**Main Topic** (2 sentences):
+- What specific problem or concept is being addressed?
+- What is the core mechanism or idea being explained?
+
+**Key Concepts** (4-5 sentences):
+- How does the main mechanism work?
+- What are the specific components or steps involved?
+- Why is this approach effective or important?
+- What makes this different from alternatives?
+
+**Learning Outcomes** (2-3 sentences):
+- What practical understanding does this provide?
+- How does this connect to broader applications?
+
+AVOID:
+- Repeating the same idea in different words
+- Generic phrases like "the video explains" or "it discusses"
+- Vague statements without specific details
+- Restating the topic multiple times
+
+Write in clear, flowing language that teaches the concept effectively.
 
 YOUR SUMMARY:"""
 
@@ -104,20 +147,21 @@ def create_summary_prompt() -> PromptTemplate:
 
 def format_docs(docs: List) -> str:
     """
-    Format retrieved documents into context string.
+    Format retrieved documents into clean context string.
+    Removes timestamps for better LLM synthesis.
     
     Args:
         docs: List of retrieved documents
         
     Returns:
-        str: Formatted context with timestamps
+        str: Formatted context without timestamps
     """
     formatted_parts = []
     
     for i, doc in enumerate(docs, 1):
-        timestamp = doc.metadata.get('timestamp', 'N/A')
-        text = doc.page_content
-        formatted_parts.append(f"[{timestamp}] {text}")
+        # Just use the text content, no timestamps
+        text = doc.page_content.strip()
+        formatted_parts.append(text)
     
     return "\n\n".join(formatted_parts)
 
@@ -167,7 +211,7 @@ def create_rag_chain(video_id: str):
 def create_summary_chain(video_id: str):
     """
     Create summary chain for lecture overview.
-    Gets ALL chunks from vector store.
+    Gets more chunks for comprehensive summary.
     
     Args:
         video_id: Video ID to load vector store for
@@ -182,9 +226,9 @@ def create_summary_chain(video_id: str):
     if not vector_store:
         raise ValueError(f"Vector store not found for video: {video_id}")
     
-    # Get ALL documents (not just top K)
-    # Use a dummy query to get all docs
-    all_docs = vector_store.similarity_search("", k=1000)
+    # Get MORE documents for summary (top 15-20 chunks)
+    # Use similarity search to get most representative content
+    all_docs = vector_store.similarity_search("main topic key concepts overview", k=20)
     
     print(f"📄 Retrieved {len(all_docs)} chunks for summary")
     
@@ -214,7 +258,7 @@ def ask_question(
     question: str
 ) -> Dict:
     """
-    Ask a question about a video with intent-based routing.
+    Ask a question about a video with intent-based routing and timestamp support.
     
     Args:
         video_id: Video ID
@@ -225,11 +269,41 @@ def ask_question(
     """
     print(f"\n❓ Question: {question}")
     
+    # Check for timestamp in question
+    from app.rag.retriever import extract_timestamp_from_query, retrieve_by_timestamp
+    timestamp = extract_timestamp_from_query(question)
+    
+    # Load vector store
+    vector_store = load_vector_store(video_id)
+    if not vector_store:
+        raise ValueError(f"Vector store not found for video: {video_id}")
+    
     # Detect intent
     intent = detect_intent(question)
     print(f"🎯 Detected intent: {intent}")
     
-    if intent == "summary":
+    if timestamp:
+        # Timestamp-based retrieval
+        print(f"🕐 Timestamp detected: {timestamp}")
+        source_docs = retrieve_by_timestamp(vector_store, timestamp, k=5)
+        
+        # Create Q&A chain
+        llm = get_llm()
+        prompt = create_qa_prompt()
+        
+        chain = (
+            {
+                "context": lambda _: format_docs(source_docs),
+                "question": RunnablePassthrough()
+            }
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+        
+        answer = chain.invoke(question)
+        
+    elif intent == "summary":
         # Summary mode - use all chunks
         chain, source_docs = create_summary_chain(video_id)
         answer = chain.invoke({})
@@ -246,7 +320,7 @@ def ask_question(
     response = {
         "answer": answer,
         "sources": [],
-        "mode": intent  # Add mode to response
+        "mode": "timestamp" if timestamp else intent
     }
     
     # Add source information with timestamps
