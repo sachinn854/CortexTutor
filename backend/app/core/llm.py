@@ -1,17 +1,18 @@
 """
 LLM initialization and management.
-Uses Ollama for local LLM inference (FREE, no API limits).
+Uses Groq API via OpenAI-compatible interface.
 """
 
-from langchain_community.llms import Ollama
+from langchain_openai import ChatOpenAI
 from typing import Optional
 from .config import settings
+import os
 
 
 class LLMManager:
     """Manages LLM instance as a singleton."""
     
-    _instance: Optional[Ollama] = None
+    _instance: Optional[ChatOpenAI] = None
     
     @classmethod
     def get_llm(cls):
@@ -22,30 +23,34 @@ class LLMManager:
     
     @classmethod
     def _initialize_llm(cls):
-        """Initialize Ollama LLM."""
-        print(f"🤖 Initializing Ollama: {settings.ollama_model}")
-        print(f"🔗 Ollama URL: {settings.ollama_base_url}")
+        """Initialize Groq LLM via OpenAI interface."""
+        if not settings.groq_api_key:
+            raise ValueError("GROQ_API_KEY not found in .env file")
+        
+        print(f"🤖 Initializing Groq: {settings.groq_model}")
         
         try:
-            llm = Ollama(
-                model=settings.ollama_model,
-                base_url=settings.ollama_base_url,
+            llm = ChatOpenAI(
+                api_key=settings.groq_api_key,
+                base_url="https://api.groq.com/openai/v1",
+                model=settings.groq_model,
                 temperature=0.7,
+                max_tokens=512,
             )
             
             # Test connection
-            print("🔍 Testing Ollama connection...")
+            print("🔍 Testing Groq connection...")
             test_response = llm.invoke("Hi")
-            print(f"✅ Ollama ready! Test: {test_response[:30]}...")
+            print(f"✅ Groq ready! Test: {test_response.content[:30]}...")
             
             return llm
             
         except Exception as e:
-            print(f"❌ Ollama connection failed: {str(e)}")
+            print(f"❌ Groq connection failed: {str(e)}")
             print("\n📥 TROUBLESHOOTING:")
-            print("1. Check Ollama is running: Task Manager -> 'ollama'")
-            print("2. Test: curl http://localhost:11434")
-            print("3. Pull model: ollama pull llama3.2")
+            print("1. Check GROQ_API_KEY in .env file")
+            print("2. Get free API key: https://console.groq.com")
+            print("3. Rate limit: 6000 tokens/min on free tier")
             raise
     
     @classmethod
