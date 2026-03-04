@@ -1,6 +1,7 @@
 """
 Rate limiting middleware for API endpoints.
-Simple token bucket implementation.
+Token bucket implementation with request and token limits.
+Conservative limits for resume/demo projects.
 """
 
 from fastapi import Request, HTTPException
@@ -11,27 +12,35 @@ import time
 
 
 class RateLimiter:
-    """Token bucket rate limiter."""
+    """Token bucket rate limiter with request and token tracking."""
     
-    def __init__(self, requests_per_minute: int = 60):
+    def __init__(
+        self, 
+        requests_per_minute: int = 10,  # Conservative: 10 req/min
+        max_tokens_per_minute: int = 5000  # Conservative: 5000 tokens/min (half of Groq)
+    ):
         """
         Initialize rate limiter.
         
         Args:
             requests_per_minute: Maximum requests per minute per IP
+            max_tokens_per_minute: Maximum tokens per minute per IP
         """
         self.requests_per_minute = requests_per_minute
+        self.max_tokens_per_minute = max_tokens_per_minute
         self.requests: Dict[str, list] = {}
+        self.tokens: Dict[str, list] = {}  # Track token usage
     
-    def is_allowed(self, client_id: str) -> bool:
+    def is_allowed(self, client_id: str, estimated_tokens: int = 500) -> tuple[bool, str]:
         """
         Check if request is allowed.
         
         Args:
             client_id: Client identifier (usually IP address)
+            estimated_tokens: Estimated tokens for this request
             
         Returns:
-            bool: True if request is allowed
+            tuple: (is_allowed, reason)
         """
         now = time.time()
         minute_ago = now - 60
@@ -39,6 +48,7 @@ class RateLimiter:
         # Initialize or clean old requests
         if client_id not in self.requests:
             self.requests[client_id] = []
+            self.tokens[client_id] = []
         
         # Remove requests older than 1 minute
         self.requests[client_id] = [
@@ -46,18 +56,34 @@ class RateLimiter:
             if req_time > minute_ago
         ]
         
-        # Check if limit exceeded
+        # Remove token records older than 1 minute
+        self.tokens[client_id] = [
+            (token_count, req_time) for token_count, req_time in self.tokens[client_id]
+            if req_time > minute_ago
+        ]
+        
+        # Check request limit
         if len(self.requests[client_id]) >= self.requests_per_minute:
-            return False
+            return False, f"Request limit exceeded ({self.requests_per_minute}/min)"
+        
+        # Check token limit
+        total_tokens = sum(token_count for token_count, _ in self.tokens[client_id])
+        if total_tokens + estimated_tokens > self.max_tokens_per_minute:
+            return False, f"Token limit exceeded ({self.max_tokens_per_minute}/min)"
         
         # Add current request
         self.requests[client_id].append(now)
-        return True
+        self.tokens[client_id].append((estimated_tokens, now))
+        
+        return True, "OK"
     
-    def get_remaining(self, client_id: str) -> int:
-        """Get remaining requests for client."""
+    def get_remaining(self, client_id: str) -> dict:
+        """Get remaining requests and tokens for client."""
         if client_id not in self.requests:
-            return self.requests_per_minute
+            return {
+                "requests": self.requests_per_minute,
+                "tokens": self.max_tokens_per_minute
+            }
         
         now = time.time()
         minute_ago = now - 60
@@ -67,7 +93,15 @@ class RateLimiter:
             if req_time > minute_ago
         ]
         
-        return max(0, self.requests_per_minute - len(recent_requests))
+        recent_tokens = [
+            token_count for token_count, req_time in self.tokens[client_id]
+            if req_time > minute_ago
+        ]
+        
+        return {
+            "requests": max(0, self.requests_per_minute - len(recent_requests)),
+            "tokens": max(0, self.max_tokens_per_minute - sum(recent_tokens))
+        }
     
     def cleanup(self):
         """Remove old entries to prevent memory leak."""
@@ -80,24 +114,36 @@ class RateLimiter:
                 if req_time > minute_ago
             ]
             
+            self.tokens[client_id] = [
+                (token_count, req_time) for token_count, req_time in self.tokens[client_id]
+                if req_time > minute_ago
+            ]
+            
             # Remove empty entries
             if not self.requests[client_id]:
                 del self.requests[client_id]
+                del self.tokens[client_id]
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """FastAPI middleware for rate limiting."""
     
-    def __init__(self, app, requests_per_minute: int = 60):
+    def __init__(
+        self, 
+        app, 
+        requests_per_minute: int = 10,  # Conservative
+        max_tokens_per_minute: int = 5000  # Conservative
+    ):
         """
         Initialize middleware.
         
         Args:
             app: FastAPI app
-            requests_per_minute: Rate limit
+            requests_per_minute: Rate limit for requests
+            max_tokens_per_minute: Rate limit for tokens
         """
         super().__init__(app)
-        self.limiter = RateLimiter(requests_per_minute)
+        self.limiter = RateLimiter(requests_per_minute, max_tokens_per_minute)
     
     async def dispatch(self, request: Request, call_next):
         """Process request with rate limiting."""
@@ -105,19 +151,32 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         
         # Skip rate limiting for health checks and OPTIONS requests
-        if request.url.path in ["/", "/health", "/docs", "/openapi.json"] or request.method == "OPTIONS":
+        if request.url.path in ["/", "/health", "/docs", "/openapi.json", "/styles.css", "/app.js"] or request.method == "OPTIONS":
             return await call_next(request)
         
+        # Estimate tokens based on endpoint
+        estimated_tokens = 500  # Default
+        if "/ingest/" in request.url.path:
+            estimated_tokens = 1500  # Video processing uses more
+        elif "/chat/" in request.url.path:
+            estimated_tokens = 800  # Q&A uses moderate
+        
         # Check rate limit
-        if not self.limiter.is_allowed(client_ip):
+        allowed, reason = self.limiter.is_allowed(client_ip, estimated_tokens)
+        
+        if not allowed:
             remaining = self.limiter.get_remaining(client_ip)
             raise HTTPException(
                 status_code=429,
                 detail={
                     "status": "error",
-                    "message": "Rate limit exceeded. Please try again later.",
-                    "limit": self.limiter.requests_per_minute,
-                    "remaining": remaining
+                    "message": f"Rate limit exceeded: {reason}",
+                    "limits": {
+                        "requests_per_minute": self.limiter.requests_per_minute,
+                        "tokens_per_minute": self.limiter.max_tokens_per_minute
+                    },
+                    "remaining": remaining,
+                    "retry_after": "60 seconds"
                 }
             )
         
@@ -125,14 +184,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         remaining = self.limiter.get_remaining(client_ip)
         
-        response.headers["X-RateLimit-Limit"] = str(self.limiter.requests_per_minute)
-        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Requests-Limit"] = str(self.limiter.requests_per_minute)
+        response.headers["X-RateLimit-Requests-Remaining"] = str(remaining["requests"])
+        response.headers["X-RateLimit-Tokens-Limit"] = str(self.limiter.max_tokens_per_minute)
+        response.headers["X-RateLimit-Tokens-Remaining"] = str(remaining["tokens"])
         
         return response
 
 
-# Global rate limiter instance
-global_rate_limiter = RateLimiter(requests_per_minute=60)
+# Global rate limiter instance (conservative for resume projects)
+global_rate_limiter = RateLimiter(
+    requests_per_minute=10,  # 10 requests/min
+    max_tokens_per_minute=5000  # 5000 tokens/min
+)
 
 
 def rate_limit(requests_per_minute: int = 60):
