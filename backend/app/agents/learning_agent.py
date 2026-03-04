@@ -113,6 +113,17 @@ def chat_with_agent(
         
         # Get answer from RAG
         rag_result = rag_ask_question(video_id, question)
+        rag_sources = rag_result.get("sources", [])
+
+        # For study command style responses, return directly without conversational rewrite.
+        if not rag_sources:
+            print("ℹ️ No sources in RAG result; returning direct response")
+            return {
+                "answer": rag_result.get("answer", ""),
+                "video_id": video_id,
+                "session_id": session_id,
+                "direct": True
+            }
         
         # Get chat history from messages
         messages = memory.messages
@@ -137,7 +148,7 @@ def chat_with_agent(
             "question": question,
             "context": "\n".join([
                 f"[{s['timestamp']}] {s['text']}"
-                for s in rag_result["sources"][:5]
+                for s in rag_sources[:5]
             ])
         })
         
