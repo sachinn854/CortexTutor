@@ -3,7 +3,7 @@ Video ingestion endpoint.
 Handles YouTube video URL submission and processing.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from youtube_transcript_api._errors import (
     TranscriptsDisabled,
     NoTranscriptFound,
@@ -19,7 +19,6 @@ from app.api.schemas.ingest import (
 from app.services.youtube_loader import load_youtube_transcript, format_timestamp
 from app.rag.splitter import split_transcript
 from app.rag.vector_store import create_vector_store, save_vector_store
-from app.services.study_material_generator import generate_all_materials, save_study_materials
 from app.utils.helpers import validate_youtube_url, log_error
 
 router = APIRouter()
@@ -36,7 +35,7 @@ router = APIRouter()
     summary="Ingest YouTube Video",
     description="Load a YouTube video transcript, process it, and store in vector database"
 )
-async def ingest_video(request: VideoIngestRequest, background_tasks: BackgroundTasks):
+async def ingest_video(request: VideoIngestRequest):
     """
     Ingest a YouTube video for Q&A.
     
@@ -45,7 +44,7 @@ async def ingest_video(request: VideoIngestRequest, background_tasks: Background
     2. Split into chunks
     3. Generate embeddings
     4. Store in vector database
-    5. Generate study materials (background)
+    5. Ready for on-demand study material generation
     
     Returns:
         VideoIngestResponse with ingestion details
@@ -67,26 +66,10 @@ async def ingest_video(request: VideoIngestRequest, background_tasks: Background
         vector_store = create_vector_store(chunks, transcript_data['video_id'])
         save_vector_store(vector_store, transcript_data['video_id'])
         
-        # Step 5: Generate study materials in background
-        video_id = transcript_data['video_id']
-        transcript_text = transcript_data['full_text']
-        
-        def generate_materials_task():
-            """Background task to generate study materials."""
-            try:
-                print(f"\n📚 Background: Generating study materials for {video_id}")
-                materials = generate_all_materials(video_id, transcript_text)
-                save_study_materials(video_id, materials)
-                print(f"✅ Background: Study materials saved for {video_id}")
-            except Exception as e:
-                print(f"❌ Background: Failed to generate study materials: {str(e)}")
-        
-        background_tasks.add_task(generate_materials_task)
-        
         # Success response
         response = VideoIngestResponse(
             status="success",
-            message="Video ingested successfully. Study materials are being generated.",
+            message="Video ingested successfully. You can now generate notes or MCQs on demand.",
             video_id=transcript_data['video_id'],
             video_url=transcript_data['video_url'],
             total_segments=len(transcript_data['transcript']),
