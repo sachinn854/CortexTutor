@@ -12,7 +12,7 @@ from app.api.schemas.chat import (
     Source
 )
 from app.agents.learning_agent import chat_with_agent
-from app.rag.pipeline import ask_question
+from app.rag.pipeline import ask_question, detect_study_command
 
 router = APIRouter()
 
@@ -40,37 +40,58 @@ async def chat_ask(request: ChatRequest):
     """
     try:
         print(f"\n💬 Question for video {request.video_id}: {request.question}")
-        
-        if request.session_id:
-            # Use agent with memory
-            print(f"🧠 Using agent with session: {request.session_id}")
-            result = chat_with_agent(
-                request.video_id,
-                request.question,
-                request.session_id
-            )
-            
-            # Agent doesn't return sources, so get them separately
-            from app.rag.pipeline import ask_question as get_sources
-            sources_result = get_sources(request.video_id, request.question)
-            sources = sources_result["sources"]
-            
-        else:
-            # Use direct RAG without memory
-            print(f"📝 Using direct RAG (no session)")
+
+        # Study commands should always bypass memory agent.
+        study_command = detect_study_command(request.question)
+        if study_command:
+            print(f"📚 Study command route (direct RAG): {study_command}")
             result = ask_question(request.video_id, request.question)
-            sources = result["sources"]
+            sources = result.get("sources", [])
+        else:
+            # Detect question intent/complexity
+            def is_simple_question(question: str) -> bool:
+                q = question.lower().strip()
+                simple_patterns = [
+                    "what is", "define", "tell me", "explain simply", 
+                    "in simple", "simply", "just tell", "briefly",
+                    "what are", "who is", "where is", "when is"
+                ]
+                return any(pattern in q for pattern in simple_patterns)
+            
+            # Route based on question complexity, not just session
+            if is_simple_question(request.question):
+                print(f"📝 Simple question detected - using direct RAG")
+                result = ask_question(request.video_id, request.question)
+                sources = result.get("sources", [])
+            elif request.session_id:
+                print(f"🧠 Complex question - using agent with session: {request.session_id}")
+                result = chat_with_agent(
+                    request.video_id,
+                    request.question,
+                    request.session_id
+                )
+                
+                # Agent doesn't return sources, so get them separately
+                from app.rag.pipeline import ask_question as get_sources
+                sources_result = get_sources(request.video_id, request.question)
+                sources = sources_result.get("sources", [])
+            else:
+                print(f"📝 Using direct RAG (no session)")
+                result = ask_question(request.video_id, request.question)
+                sources = result.get("sources", [])
         
         # Convert sources to schema format
-        source_objects = [
-            Source(
-                text=source["text"],
-                timestamp=source["timestamp"],
-                url=source["url"],
-                start=source["start"]
-            )
-            for source in sources[:5]  # Limit to 5 sources
-        ]
+        source_objects = []
+        if sources:  # Only process sources if they exist
+            source_objects = [
+                Source(
+                    text=source["text"],
+                    timestamp=source["timestamp"],
+                    url=source["url"],
+                    start=source["start"]
+                )
+                for source in sources[:5]  # Limit to 5 sources
+            ]
         
         # Create response
         response = ChatResponse(
