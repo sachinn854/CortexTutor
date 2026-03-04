@@ -325,6 +325,145 @@ button:disabled {
     color: #19c37d;
 }
 
+/* Study Materials Buttons */
+.study-materials-buttons {
+    margin: 16px 0;
+    padding: 16px;
+    background: #343541;
+    border-radius: 8px;
+    border-left: 3px solid #19c37d;
+    display: block !important;
+    visibility: visible !important;
+}
+
+.study-materials-buttons p {
+    color: #19c37d;
+    margin-bottom: 12px !important;
+    font-size: 14px;
+    display: block !important;
+}
+
+.study-btn {
+    display: inline-block !important;
+    margin: 6px 8px 6px 0;
+    padding: 10px 16px;
+    background: #5436da !important;
+    color: #fff !important;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    visibility: visible !important;
+}
+
+.study-btn:hover {
+    background: #6b46e5;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(84, 54, 218, 0.3);
+}
+
+.study-btn:active {
+    transform: translateY(0);
+}
+
+/* Study Material Cards */
+.study-material-card {
+    margin: 16px 0;
+    padding: 20px;
+    background: #343541;
+    border-radius: 12px;
+    border-left: 4px solid #19c37d;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.study-material-card h3 {
+    color: #19c37d;
+    margin-bottom: 16px;
+    font-size: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.study-material-card h4 {
+    color: #ececf1;
+    margin: 16px 0 8px 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.study-material-card p {
+    line-height: 1.6;
+    margin: 12px 0;
+    color: #c5c5d2;
+}
+
+.study-material-card ul {
+    margin: 12px 0;
+    padding-left: 20px;
+}
+
+.study-material-card li {
+    margin: 8px 0;
+    line-height: 1.5;
+    color: #c5c5d2;
+}
+
+/* MCQ Styles */
+.mcq-content {
+    margin-top: 16px;
+}
+
+.mcq-item {
+    margin: 20px 0;
+    padding: 16px;
+    background: #40414f;
+    border-radius: 8px;
+    border-left: 3px solid #5436da;
+}
+
+.mcq-question {
+    color: #ececf1 !important;
+    font-weight: 600 !important;
+    margin-bottom: 12px !important;
+}
+
+.mcq-answer {
+    color: #19c37d !important;
+    margin-bottom: 0 !important;
+    font-weight: 500 !important;
+}
+
+/* Flashcard Styles */
+.flashcard-content {
+    margin-top: 16px;
+}
+
+.flashcard-item {
+    margin: 16px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.flashcard-front {
+    background: #5436da;
+    padding: 16px;
+    color: #fff;
+    font-weight: 600;
+}
+
+.flashcard-back {
+    background: #40414f;
+    padding: 16px;
+    color: #c5c5d2;
+    border-left: 3px solid #19c37d;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .header h1 {
