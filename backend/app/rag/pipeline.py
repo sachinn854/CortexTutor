@@ -34,63 +34,83 @@ TIMESTAMP HANDLING:
 - Do not ask the user to restate the concept if it can be inferred from the transcript
 - Interpret the user's intent - they want to know what was explained at that time
 
-LENGTH CONTROL:
-- For simple definition questions: 3-4 sentences only
-- For explanatory questions: 1 short paragraph (4-6 sentences)
-- For complex questions: 2 paragraphs maximum
+CRITICAL INSTRUCTION - RESPONSE LENGTH MATCHING:
+You MUST analyze the question first and match your response length to the user's intent:
 
-QUALITY:
-- Each sentence must add new information
-- Explain HOW things work, not just WHAT they are
-- Use specific details from the content
-- End immediately after completing the explanation
+**SIMPLE QUESTIONS** ("what is X?", "define X", "tell me in simple way", "simply", "just tell me"):
+- MAXIMUM 2-3 sentences ONLY
+- Give direct definition + one example
+- DO NOT add sections, headers, or detailed explanations
+- DO NOT use words like "comprehensive", "key components", "practical applications"
+- Example: "What is a neuron?" → "A neuron is a nerve cell that transmits electrical signals in the brain. It receives signals through dendrites and sends them through axons to other neurons."
+
+**EXPLANATION QUESTIONS** ("how does X work?", "explain X"):
+- Keep to 4-5 sentences maximum
+- Focus on core mechanism only
+- No multiple sections or detailed breakdowns
+
+**COMPLEX QUESTIONS** ("analyze", "detailed explanation", "comprehensive", "compare"):
+- Only then provide detailed analysis with sections
+
+**WARNING SIGNS TO AVOID:**
+- Adding sections like "Key Components", "Practical Applications", "Summary" for simple questions
+- Using phrases like "comprehensive explanation" for basic definitions
+- Writing multiple paragraphs when user asks "simply" or "in simple way"
+
+IF USER SAYS "SIMPLE", "SIMPLY", "JUST", "BRIEF" - KEEP IT UNDER 3 SENTENCES!
 
 If the transcript lacks information, state this briefly and explain what IS covered.
+
+STOP after answering the question. Do not expand further unless specifically requested.
 
 YOUR ANSWER:"""
 
 
 # Summary Prompt Template (for lecture overview)
-SUMMARY_PROMPT_TEMPLATE = """You are an expert content summarizer specializing in educational videos.
+SUMMARY_PROMPT_TEMPLATE = """You are an expert educational content analyst. Create a comprehensive summary that truly helps students understand the lecture content.
 
-TRANSCRIPT SECTIONS:
+LECTURE TRANSCRIPT SECTIONS:
 {context}
 
-TASK:
-Analyze the transcript and create a clear, structured summary that explains the core concepts.
+YOUR TASK:
+Analyze the transcript and create a detailed, educational summary that captures the essence of what students need to learn.
 
-CRITICAL INSTRUCTIONS:
-1. Each sentence must introduce a NEW meaningful point - avoid repetition
-2. Focus on explaining HOW and WHY, not just WHAT
-3. Connect ideas logically to show relationships between concepts
-4. Use specific details from the content, not generic statements
-5. Write exactly 8-10 distinct sentences, each adding unique value
+REQUIRED STRUCTURE:
 
-STRUCTURE YOUR SUMMARY:
+**Topic & Purpose** (2-3 sentences):
+- What specific subject/problem is being addressed?
+- What is the main learning objective or goal?
+- Why is this topic important or relevant?
 
-**Main Topic** (2 sentences):
-- What specific problem or concept is being addressed?
-- What is the core mechanism or idea being explained?
+**Core Concepts & Mechanisms** (5-6 sentences):
+- What are the key concepts, methods, or techniques explained?
+- HOW do these concepts/methods work? (Step-by-step process)
+- WHY do they work this way? (Underlying principles)
+- What specific examples or applications are mentioned?
+- How do the concepts connect to each other?
 
-**Key Concepts** (4-5 sentences):
-- How does the main mechanism work?
-- What are the specific components or steps involved?
-- Why is this approach effective or important?
-- What makes this different from alternatives?
+**Key Insights & Applications** (2-3 sentences):
+- What are the most important takeaways for students?
+- How is this knowledge applied in practice?
+- What broader implications or connections are discussed?
 
-**Learning Outcomes** (2-3 sentences):
-- What practical understanding does this provide?
-- How does this connect to broader applications?
+QUALITY REQUIREMENTS:
+✓ Each sentence must provide unique, valuable information
+✓ Use SPECIFIC details, examples, and terminology from the transcript
+✓ Explain the 'how' and 'why', not just 'what'
+✓ Write in clear, educational language that builds understanding
+✓ Focus on content that helps students learn, not just describe what was said
+✓ Connect concepts logically to show relationships
 
 AVOID:
-- Repeating the same idea in different words
-- Generic phrases like "the video explains" or "it discusses"
-- Vague statements without specific details
-- Restating the topic multiple times
+❌ Generic phrases like "the video discusses" or "it explains"
+❌ Repeating the same information in different words
+❌ Vague statements without specific details
+❌ Simply listing topics without explaining them
 
-Write in clear, flowing language that teaches the concept effectively.
+Write a comprehensive educational summary that teaches the key concepts effectively:
 
-YOUR SUMMARY:"""
+EDUCATIONAL SUMMARY:"""
 
 
 # Keywords that trigger summary mode
@@ -106,7 +126,15 @@ SUMMARY_KEYWORDS = [
     "what is this",
     "what does this",
     "cover",
-    "topics covered"
+    "topics covered",
+    "give me the summary",
+    "give me summary",
+    "can you summarize",
+    "tell me about this",
+    "what's this about",
+    "lecture summary",
+    "video summary",
+    "content summary"
 ]
 
 
@@ -226,9 +254,51 @@ def create_summary_chain(video_id: str):
     if not vector_store:
         raise ValueError(f"Vector store not found for video: {video_id}")
     
-    # Get MORE documents for summary (top 15-20 chunks)
-    # Use similarity search to get most representative content
-    all_docs = vector_store.similarity_search("main topic key concepts overview", k=20)
+    # Get comprehensive content for summary - use multiple search strategies
+    # 1. Get chunks from beginning (introduction/overview)
+    intro_docs = vector_store.similarity_search("introduction concept explanation definition", k=8)
+    
+    # 2. Get main content chunks
+    main_docs = vector_store.similarity_search("key important main concept method technique", k=8)
+    
+    # 3. Get additional diverse content
+    extra_docs = vector_store.similarity_search("example application implementation process", k=6)
+    
+    # Combine and deduplicate
+    all_docs = intro_docs + main_docs + extra_docs
+    # Remove duplicates based on content
+    unique_docs = []
+    seen_content = set()
+    for doc in all_docs:
+        content_key = doc.page_content[:100]  # First 100 chars as key
+        if content_key not in seen_content:
+            unique_docs.append(doc)
+            seen_content.add(content_key)
+    
+    # Limit to top 15 diverse chunks
+    all_docs = unique_docs[:15]
+    
+    print(f"📄 Retrieved {len(all_docs)} diverse chunks for comprehensive summary")
+    
+    # Get LLM
+    llm = get_llm()
+    
+    # Create prompt
+    prompt = create_summary_prompt()
+    
+    # Create LCEL chain
+    summary_chain = (
+        {
+            "context": lambda _: format_docs(all_docs)
+        }
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    
+    print(f"✅ Summary chain created")
+    
+    return summary_chain, all_docs
     
     print(f"📄 Retrieved {len(all_docs)} chunks for summary")
     
@@ -268,6 +338,12 @@ def ask_question(
         Dict with answer and sources
     """
     print(f"\n❓ Question: {question}")
+    
+    # Check for study commands first
+    study_command = detect_study_command(question)
+    if study_command:
+        print(f"📚 Study command detected: {study_command}")
+        return handle_study_command(video_id, study_command)
     
     # Check for timestamp in question
     from app.rag.retriever import extract_timestamp_from_query, retrieve_by_timestamp
@@ -336,66 +412,161 @@ def ask_question(
     return response
 
 
-# Test function
-def test_rag_pipeline():
-    """Test the complete RAG pipeline with both modes."""
-    from app.services.youtube_loader import load_youtube_transcript
-    from app.rag.splitter import split_transcript
-    from app.rag.vector_store import create_vector_store, save_vector_store
+def detect_study_command(question: str) -> str:
+    """
+    Detect if question is a study material command.
     
-    print("\n" + "="*60)
-    print("Testing RAG Pipeline with Intent Routing")
-    print("="*60)
+    Args:
+        question: User's question/command
+        
+    Returns:
+        "notes", "mcqs", "flashcards", or None
+    """
+    question_lower = question.lower().strip()
     
+    # Direct commands
+    if question_lower.startswith("/"):
+        command = question_lower[1:]  # Remove /
+        if command in ["notes", "note"]:
+            return "notes"
+        elif command in ["mcqs", "mcq", "quiz", "questions"]:
+            return "mcqs"
+        elif command in ["flashcards", "flashcard", "cards"]:
+            return "flashcards"
+    
+    # Natural language detection
+    study_commands = {
+        "notes": ["make notes", "create notes", "generate notes", "give me notes", "show notes", "provide notes", "notes for", "notes on"],
+        "mcqs": ["make quiz", "create mcq", "generate questions", "give me quiz", "mcq", "multiple choice", "mcqs", "quiz questions", "questions with options", "10 mcqs", "5 mcqs", "quiz question"],
+        "flashcards": ["make flashcards", "create flashcards", "generate cards", "give me flashcards", "flash cards"]
+    }
+    
+    # Check each command pattern
+    for command, keywords in study_commands.items():
+        for keyword in keywords:
+            if keyword in question_lower:
+                print(f"🔍 Study command detected: '{command}' (matched: '{keyword}')")
+                return command
+    
+    print(f"❌ No study command detected in: '{question_lower}'")
+    
+    return None
+
+
+def handle_study_command(video_id: str, command: str) -> Dict:
+    """
+    Handle study material generation commands.
+    
+    Args:
+        video_id: Video ID
+        command: Study command type
+        
+    Returns:
+        Dict with study materials
+    """
     try:
-        # Load and prepare data
-        video_url = "https://www.youtube.com/watch?v=aircAruvnKk"
-        print(f"\n📹 Loading video: {video_url}")
+        from app.services.study_material_generator import (
+            generate_detailed_notes_text,
+            generate_mcqs_with_options
+        )
         
-        transcript_data = load_youtube_transcript(video_url)
-        video_id = transcript_data['video_id']
+        print(f"📚 Handling study command: {command} for video {video_id}")
+
+        def get_full_transcript_text() -> str:
+            try:
+                from app.services.youtube_loader import load_youtube_transcript
+                video_url = f"https://www.youtube.com/watch?v={video_id}"
+                transcript_data = load_youtube_transcript(video_url)
+                transcript_text = transcript_data.get("full_text", "")
+                if transcript_text:
+                    print(f"📄 Loaded full transcript from YouTube: {len(transcript_text)} characters")
+                    return transcript_text
+            except Exception as youtube_error:
+                print(f"⚠️ YouTube transcript reload failed, falling back to vector store: {youtube_error}")
+
+            try:
+                from app.rag.vector_store import load_vector_store
+                vector_store = load_vector_store(video_id)
+                if not vector_store:
+                    return ""
+
+                all_docs = vector_store.similarity_search("main concepts explanation examples", k=120)
+                transcript_text = "\n".join([doc.page_content for doc in all_docs])
+                print(f"📄 Loaded transcript from vector store fallback: {len(transcript_text)} characters")
+                return transcript_text
+            except Exception as vector_error:
+                print(f"❌ Vector store transcript fallback failed: {vector_error}")
+                return ""
+
+        transcript_text = get_full_transcript_text()
+        if not transcript_text:
+            return {
+                "answer": "⚠️ Could not load transcript for this video. Please re-ingest the video and try again.",
+                "type": "error"
+            }
         
-        # Split into chunks
-        chunks = split_transcript(transcript_data)
-        
-        # Use first 100 chunks for testing
-        test_chunks = chunks[:100]
-        print(f"\nUsing {len(test_chunks)} chunks for testing")
-        
-        # Create and save vector store
-        vector_store = create_vector_store(test_chunks, video_id)
-        save_vector_store(vector_store, video_id)
-        
-        # Test questions
-        test_questions = [
-            "What is this lecture about?",  # Should trigger summary
-            "What is a neural network?",     # Should trigger Q&A
-            "Summarize this video",          # Should trigger summary
-        ]
-        
-        for question in test_questions:
-            print(f"\n" + "="*60)
-            result = ask_question(video_id, question)
+        if command == "notes":
+            print(f"📖 Generating detailed notes for {video_id}...")
+            notes_text = generate_detailed_notes_text(transcript_text, video_id)
+
+            return {
+                "answer": notes_text,
+                "type": "notes"
+            }
             
-            print(f"\n🎯 Mode: {result['mode']}")
-            print(f"\n💬 Answer:")
-            print(result["answer"])
+        elif command == "mcqs":
+            print(f"📋 Generating MCQs with options for {video_id}...")
+            mcqs = generate_mcqs_with_options(transcript_text, video_id)
             
-            print(f"\n📚 Sources ({len(result['sources'])} chunks):")
-            for i, source in enumerate(result["sources"][:3], 1):
-                print(f"\n  {i}. [{source['timestamp']}]")
-                print(f"     {source['text'][:100]}...")
+            # Format MCQ response with options
+            mcq_text = "# ❓ Quiz Questions\n\n"
+            
+            if not mcqs:
+                mcq_text += "⚠️ Could not generate MCQs. Try asking specific questions about the video content.\n"
+            else:
+                for i, mcq in enumerate(mcqs[:5], 1):
+                    mcq_text += f"**Q{i}.** {mcq.get('question', 'N/A')}\n\n"
+                    
+                    options = mcq.get('options', [])
+                    for j, option in enumerate(options, 1):
+                        letter = chr(ord('A') + j - 1)  # A, B, C, D
+                        mcq_text += f"   {letter}. {option}\n"
+                    
+                    correct_idx = mcq.get('correct_answer', -1)
+                    if 0 <= correct_idx < len(options):
+                        correct_letter = chr(ord('A') + correct_idx)
+                        mcq_text += f"\n   ✅ **Correct Answer:** {correct_letter}\n"
+                    
+                    explanation = mcq.get('explanation', '')
+                    if explanation:
+                        mcq_text += f"   💡 **Explanation:** {explanation}\n"
+                    
+                    mcq_text += "\n---\n\n"
+            
+            return {
+                "answer": mcq_text,
+                "type": "mcqs",
+                "materials": {"mcqs": mcqs}
+            }
+
+        elif command == "flashcards":
+            return {
+                "answer": "ℹ️ Flashcards button removed for now. Use /mcqs or /notes.",
+                "type": "info"
+            }
         
-        print("\n" + "="*60)
-        print("✅ RAG Pipeline test passed!")
-        return True
+        else:
+            # Default response for unknown commands
+            return {
+                "answer": f"Unknown study command: {command}",
+                "type": "error"
+            }
         
     except Exception as e:
-        print(f"\n❌ RAG Pipeline test failed: {str(e)}")
+        print(f"❌ Study command error: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
-
-
-if __name__ == "__main__":
-    test_rag_pipeline()
+        return {
+            "answer": f"❌ Error generating {command}. Please try again.",
+            "type": "error"
+        }
