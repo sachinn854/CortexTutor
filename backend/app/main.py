@@ -29,8 +29,12 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Add rate limiting middleware (60 requests per minute)
-app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+# Add rate limiting middleware (updated for better performance)
+app.add_middleware(
+    RateLimitMiddleware, 
+    requests_per_minute=10,  # 10 requests/min (conservative)
+    max_tokens_per_minute=5500  # 5500 tokens/min (increased for study materials)
+)
 
 # Add timeout middleware (5 minutes for long operations)
 app.add_middleware(TimeoutMiddleware, timeout_seconds=300)
@@ -47,7 +51,9 @@ async def startup_event():
     print(f"🤖 LLM: Groq ({settings.groq_model}) - FAST & FREE!")
     print(f"🔍 Embeddings: {settings.embedding_model}")
     print(f"💾 Vector DB: {settings.vector_db_type}")
-    print(f"⚡ Rate Limit: 60 req/min")
+    print(f"⚡ Rate Limits (Updated for Study Materials):")
+    print(f"   - Requests: 10/min per IP")
+    print(f"   - Tokens: 5500/min per IP")
     print(f"⏱️  Timeout: 300s")
     print(f"🌐 Frontend: http://localhost:8000")
 
