@@ -75,8 +75,18 @@ async function processVideo(url) {
                 `✅ Video loaded successfully!\n\n` +
                 `📊 Duration: ${data.duration}\n` +
                 `📝 Segments: ${data.total_segments}\n\n` +
-                `Now you can ask me anything about this video!`
+                `💬 **Ask me anything about this video!**\n\n` +
+                `🎯 **Quick Commands:**\n` +
+                `• \`/notes\` - Get structured study notes\n` +
+                `• \`/mcqs\` - Generate quiz questions\n` +
+                `• \`/flashcards\` - Create flashcards\n\n` +
+                `Or just ask questions naturally!`
             );
+            
+            // Add study materials buttons
+            console.log('🎯 Adding study materials buttons for video:', state.videoId);
+            addStudyMaterialsButtons(state.videoId);
+            console.log('✅ Study materials buttons added');
             
             userInput.placeholder = 'Ask anything about this video...';
         } else {
@@ -102,6 +112,14 @@ async function askQuestion(question) {
     sendBtn.disabled = true;
 
     addUserMessage(question);
+    
+    // Check if it's a study command
+    const studyCommand = detectStudyCommand(question);
+    if (studyCommand) {
+        await handleStudyCommand(studyCommand, question);
+        return;
+    }
+    
     const loadingId = addBotMessage('', true, true);
 
     try {
@@ -137,6 +155,64 @@ async function askQuestion(question) {
     userInput.disabled = false;
     sendBtn.disabled = false;
     userInput.focus();
+}
+
+// Study Command Detection and Handling
+function detectStudyCommand(question) {
+    const q = question.toLowerCase().trim();
+    
+    if (q.startsWith('/')) {
+        const cmd = q.substring(1);
+        if (['notes', 'note'].includes(cmd)) return 'notes';
+        if (['mcqs', 'mcq', 'quiz', 'questions'].includes(cmd)) return 'mcqs';
+        if (['flashcards', 'flashcard', 'cards'].includes(cmd)) return 'flashcards';
+    }
+    
+    // Natural language detection
+    if (q.includes('make notes') || q.includes('generate notes') || q.includes('give me notes')) return 'notes';
+    if (q.includes('make quiz') || q.includes('generate questions') || q.includes('mcq')) return 'mcqs';
+    if (q.includes('make flashcards') || q.includes('generate cards') || q.includes('flashcards')) return 'flashcards';
+    
+    return null;
+}
+
+async function handleStudyCommand(command, originalQuestion) {
+    const loadingId = addBotMessage(`📚 Generating ${command}...`, true);
+    
+    try {
+        const res = await fetch(API + '/chat/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                video_id: state.videoId, 
+                question: originalQuestion,
+                session_id: state.sessionId 
+            })
+        });
+
+        const data = await res.json();
+        removeMessage(loadingId);
+
+        if (res.ok) {
+            // Display the study material response
+            addBotMessage(data.answer);
+            if (data.sources && data.sources.length > 0) {
+                addSources(data.sources);
+            }
+        } else {
+            const errorMsg = data.detail?.message || `Failed to generate ${command}`;
+            addBotMessage(`❌ Error: ${errorMsg}`);
+        }
+    } catch (err) {
+        console.error('❌ Error:', err);
+        removeMessage(loadingId);
+        addBotMessage(`❌ Network error: ${err.message}`);
+    } finally {
+        state.isProcessing = false;
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        userInput.focus();
+    }
 }
 
 function addUserMessage(text) {
@@ -247,4 +323,32 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
     init();
+}
+
+
+// Study Materials Buttons
+function addStudyMaterialsButtons(videoId) {
+    console.log('📚 Creating study materials buttons for videoId:', videoId);
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.innerHTML = `
+        <div class="message-avatar">📚</div>
+        <div class="message-content">
+            <div class="study-materials-buttons">
+                <p style="margin-bottom: 12px; font-weight: 600;">📖 Generate Study Materials:</p>
+                <button class="study-btn" onclick="triggerStudyCommand('notes')">📝 Notes</button>
+                <button class="study-btn" onclick="triggerStudyCommand('mcqs')">❓ MCQs</button>
+            </div>
+        </div>
+    `;
+    messagesDiv.appendChild(msgDiv);
+    console.log('✅ Study materials buttons appended to DOM');
+    scrollToBottom();
+}
+
+async function triggerStudyCommand(command) {
+    if (!state.videoId || state.isProcessing) return;
+    const commandText = `/${command}`;
+    addUserMessage(commandText);
+    await handleStudyCommand(command, commandText);
 }
