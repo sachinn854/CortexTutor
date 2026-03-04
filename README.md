@@ -11,6 +11,7 @@ An AI-powered learning assistant that helps you understand YouTube videos throug
 
 ### 🎯 Core Capabilities
 - **Smart Q&A**: Ask questions about any YouTube video and get accurate answers
+- **Study Materials**: Generate comprehensive notes and MCQ quizzes on-demand
 - **Timestamp Support**: Reference specific moments (e.g., "What was explained at 2:51?")
 - **Conversation Memory**: Maintains context across multiple questions
 - **Auto-Summarization**: Get comprehensive summaries of video content
@@ -22,6 +23,12 @@ An AI-powered learning assistant that helps you understand YouTube videos throug
 - **Hybrid Retrieval**: Combines semantic similarity + timestamp-based lookup
 - **Intent Detection**: Automatically routes between Q&A, summary, and timestamp modes
 - **Anti-Repetition**: Prompts engineered to avoid redundant responses
+
+### 📚 Study Materials
+- **Detailed Notes**: Generate comprehensive study notes from full lecture context
+- **MCQ Questions**: Create multiple-choice quizzes with 4 options and explanations
+- **Full Context Processing**: Uses chunked map-reduce for complete lecture coverage
+- **One-Click Generation**: Buttons appear after video load for instant access
 
 ### 🎨 Modern UI/UX
 - **ChatGPT-Style Interface**: Dark theme, smooth animations, professional design
@@ -85,13 +92,17 @@ python -m uvicorn app.main:app --reload
    - Paste any YouTube video URL
    - Wait 30-60 seconds for processing
 
-2. **Ask Questions**
+2. **Ask Questions or Generate Study Materials**
    ```
    "What is this video about?"
    "Explain the concept at 2:51"
    "How does attention mechanism work?"
    "Summarize the main points"
    ```
+   
+   Or use study material buttons:
+   - Click **Notes** for comprehensive study notes
+   - Click **MCQs** for quiz questions with answers
 
 3. **Get Answers**
    - Receive accurate, context-aware responses
@@ -119,6 +130,14 @@ python -m uvicorn app.main:app --reload
 "Can you explain more?"
 "What did you mean by that?"
 "How does that relate to what we discussed?"
+```
+
+**Study Material Commands**
+```
+"/notes" - Generate detailed study notes
+"/mcqs" - Generate MCQ quiz questions
+"give me notes from this lecture"
+"can you make 5 mcqs with options?"
 ```
 
 ## 🏗️ Architecture
@@ -150,7 +169,13 @@ Embedding Generation (sentence-transformers)
     ↓
 Vector Storage (FAISS)
     ↓
-Query Processing
+User Query
+    ├─ Study Command Detection (/notes, /mcqs)
+    │   ↓
+    │   Full Transcript Load + Chunked Summarization
+    │   ↓
+    │   LLM Generation (Plain Text Notes or MCQs)
+    │
     ├─ Timestamp Detection → Direct Lookup
     ├─ Summary Intent → Comprehensive Retrieval
     └─ Q&A Intent → Semantic Search (Top 5)
@@ -165,7 +190,7 @@ Response with Sources
 ### Key Components
 
 **Retrieval System** (`backend/app/rag/`)
-- `pipeline.py`: Main RAG orchestration
+- `pipeline.py`: Main RAG orchestration + study command routing
 - `retriever.py`: Hybrid retrieval (semantic + timestamp)
 - `vector_store.py`: FAISS management
 - `splitter.py`: Intelligent chunking
@@ -175,9 +200,14 @@ Response with Sources
 - `memory.py`: Chat history management
 - `tools.py`: Utility functions
 
+**Study Materials** (`backend/app/services/`)
+- `study_material_generator.py`: Notes and MCQ generation with full context
+- Uses map-reduce pattern for long transcripts
+- Plain text notes (no JSON parsing overhead)
+
 **API Layer** (`backend/app/api/`)
-- `ingest.py`: Video processing endpoint
-- `chat.py`: Q&A endpoint
+- `ingest.py`: Video processing endpoint (on-demand study materials)
+- `chat.py`: Q&A endpoint with study command detection
 
 ## ⚙️ Configuration
 
@@ -234,8 +264,10 @@ INSTRUCTIONS:
 
 ## 📊 Performance
 
-- **Processing Time**: 30-60 seconds per video
+- **Processing Time**: 30-60 seconds per video (ingestion only)
 - **Query Response**: 2-3 seconds
+- **Notes Generation**: 15-30 seconds (full context processing)
+- **MCQ Generation**: 10-20 seconds (5 questions with options)
 - **Embedding Model**: 384 dimensions
 - **Vector Search**: Sub-second retrieval
 - **LLM Speed**: ~100 tokens/second (Groq)
@@ -305,6 +337,16 @@ python -m backend.app.agents.memory
 - Ensure backend is running on port 8000
 - Clear browser cache (Ctrl+F5)
 - Check browser console for errors
+
+**Study materials generation slow**
+- Notes/MCQs process full transcript (takes 15-30 seconds)
+- Uses chunked map-reduce for complete coverage
+- Progress shown in backend terminal logs
+
+**MCQs showing 0 questions**
+- Check backend logs for JSON parsing errors
+- Retry generation (already has retry logic)
+- May indicate rate limiting or model issues
 
 ## 🚀 Deployment
 
