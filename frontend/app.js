@@ -1,7 +1,7 @@
 // YouTube Learning Assistant - Frontend JavaScript
 console.log('🚀 App started');
 
-const API = 'https://cortextutor-1.onrender.com';
+const API = "https://cortextutor-1.onrender.com/api";
 let state = {
     videoId: null,
     sessionId: 'session_' + Date.now(),
