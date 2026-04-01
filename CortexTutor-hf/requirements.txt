@@ -1,0 +1,27 @@
+# Core Framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+
+# LangChain & LLM
+langchain
+langchain-community
+langchain-openai
+langchain-huggingface
+
+# HuggingFace
+huggingface-hub
+sentence-transformers
+
+# YouTube & Video Processing
+youtube-transcript-api
+
+# Vector Database
+faiss-cpu
+
+# Utilities
+requests
+python-multipart
+psutil
