@@ -1,0 +1,17 @@
+.env
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Keep folders, ignore all generated data inside
+vector_db/**
+!vector_db/
+!vector_db/.gitkeep
+
+study_materials/**
+!study_materials/
+!study_materials/.gitkeep
