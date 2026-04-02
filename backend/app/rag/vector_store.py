@@ -61,6 +61,7 @@ def save_vector_store(
     
     # Save path
     save_path = os.path.join(settings.vector_db_path, video_id)
+    os.makedirs(save_path, exist_ok=True)
     
     print(f"💾 Saving vector store to: {save_path}")
     
@@ -82,6 +83,7 @@ def load_vector_store(video_id: str) -> Optional[FAISS]:
     Returns:
         FAISS: Loaded vector store or None if not found
     """
+    os.makedirs(settings.vector_db_path, exist_ok=True)
     load_path = os.path.join(settings.vector_db_path, video_id)
     
     if not os.path.exists(load_path):
