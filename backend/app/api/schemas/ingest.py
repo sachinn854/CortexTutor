@@ -2,7 +2,7 @@
 Schemas for video ingestion endpoints.
 """
 
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, Field
 from typing import Optional
 
 
@@ -44,6 +44,33 @@ class VideoIngestResponse(BaseModel):
                 "total_segments": 286,
                 "total_chunks": 286,
                 "duration": "18:25"
+            }
+        }
+
+
+class TextIngestRequest(BaseModel):
+    """Request schema for manual transcript ingestion."""
+
+    transcript_text: str = Field(
+        ...,
+        min_length=20,
+        description="Plain transcript text to ingest"
+    )
+    video_id: Optional[str] = Field(
+        default=None,
+        description="Optional custom video/session ID"
+    )
+    title: Optional[str] = Field(
+        default=None,
+        description="Optional title for this transcript"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "transcript_text": "Neural networks are inspired by the brain...",
+                "video_id": "manual_nn_intro",
+                "title": "Neural Network Intro"
             }
         }
 

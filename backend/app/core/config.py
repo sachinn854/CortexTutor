@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Vector Database Configuration
     vector_db_type: str = "faiss"  # Using FAISS (no Rust compilation needed)
     vector_db_path: str = "./vector_db"
+
+    # Study material storage path
+    study_materials_path: str = "./study_materials"
     
     # RAG Configuration
     chunk_size: int = 800  # Larger chunks for better context

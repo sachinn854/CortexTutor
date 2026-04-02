@@ -46,11 +46,17 @@ app.add_middleware(PerformanceMiddleware, monitor=global_monitor)
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
+    # Auto-create runtime storage dirs for fresh deployments.
+    os.makedirs(settings.vector_db_path, exist_ok=True)
+    os.makedirs(settings.study_materials_path, exist_ok=True)
+
     print(f"🚀 Starting {settings.app_name} v{settings.app_version}")
     print(f"📊 Debug mode: {settings.debug}")
     print(f"🤖 LLM: Groq ({settings.groq_model}) - FAST & FREE!")
     print(f"🔍 Embeddings: {settings.embedding_model}")
     print(f"💾 Vector DB: {settings.vector_db_type}")
+    print(f"📁 Vector DB path: {settings.vector_db_path}")
+    print(f"📁 Study materials path: {settings.study_materials_path}")
     print(f"⚡ Rate Limits (Updated for Study Materials):")
     print(f"   - Requests: 10/min per IP")
     print(f"   - Tokens: 5500/min per IP")

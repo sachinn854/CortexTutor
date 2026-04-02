@@ -128,14 +128,6 @@ def load_youtube_transcript(
         api = YouTubeTranscriptApi()
         transcript_data = None
         
-        # Add custom headers to avoid blocking
-        import requests
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-        })
-        
         try:
             # Try to fetch with requested languages
             print(f"   Fetching transcript...")
@@ -157,8 +149,13 @@ def load_youtube_transcript(
         except Exception as e:
             if isinstance(e, (TranscriptsDisabled, VideoUnavailable)):
                 raise
+
+            # DNS/network restrictions are common on hosted runtimes.
+            # Let the endpoint translate this into a clean 503 response.
             print(f"   ❌ Error: {str(e)}")
-            raise
+            raise ConnectionError(
+                "YouTube is unreachable from this runtime. Use /api/ingest/text as a fallback."
+            ) from e
         
         print(f"✅ Loaded {len(transcript_data)} segments")
         
@@ -210,9 +207,8 @@ def load_youtube_transcript(
     except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
         raise
     except Exception as e:
+        # Keep logs concise on hosted runtimes while preserving root cause in message.
         print(f"❌ Error loading transcript: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise
 
 

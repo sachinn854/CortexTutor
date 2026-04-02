@@ -7,6 +7,7 @@ from typing import Dict, List
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from app.core.llm import get_llm
+from app.core.config import settings
 import json
 import os
 import re
@@ -345,11 +346,12 @@ def save_study_materials(video_id: str, materials: Dict):
         materials: Materials dict
     """
     # Create directory
-    materials_dir = f"study_materials/{video_id}"
+    os.makedirs(settings.study_materials_path, exist_ok=True)
+    materials_dir = os.path.join(settings.study_materials_path, video_id)
     os.makedirs(materials_dir, exist_ok=True)
     
     # Save as JSON
-    filepath = f"{materials_dir}/materials.json"
+    filepath = os.path.join(materials_dir, "materials.json")
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(materials, f, indent=2, ensure_ascii=False)
     
@@ -366,7 +368,8 @@ def load_study_materials(video_id: str) -> Dict:
     Returns:
         Dict with materials or None if not found
     """
-    filepath = f"study_materials/{video_id}/materials.json"
+    os.makedirs(settings.study_materials_path, exist_ok=True)
+    filepath = os.path.join(settings.study_materials_path, video_id, "materials.json")
     
     if not os.path.exists(filepath):
         return None
