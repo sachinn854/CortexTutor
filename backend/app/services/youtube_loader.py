@@ -1,6 +1,7 @@
 """
 YouTube transcript loader with timestamp support.
 Fetches transcripts and preserves timing information for deep linking.
+Falls back to yt-dlp when youtube-transcript-api is blocked by the host.
 """
 
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -13,80 +14,148 @@ from youtube_transcript_api._errors import (
 from typing import List, Dict, Optional
 from urllib.parse import urlparse, parse_qs
 import re
+import json
+import urllib.request
 
 
 def extract_video_id(url: str) -> str:
-    """
-    Extract video ID from various YouTube URL formats.
-    
-    Supports:
-    - https://www.youtube.com/watch?v=VIDEO_ID
-    - https://youtu.be/VIDEO_ID
-    - https://www.youtube.com/embed/VIDEO_ID
-    
-    Args:
-        url: YouTube video URL
-        
-    Returns:
-        str: Video ID
-        
-    Raises:
-        ValueError: If URL is invalid or video ID cannot be extracted
-    """
-    # Pattern 1: youtube.com/watch?v=VIDEO_ID
     if "youtube.com/watch" in url:
         parsed = urlparse(url)
         video_id = parse_qs(parsed.query).get('v')
         if video_id:
             return video_id[0]
-    
-    # Pattern 2: youtu.be/VIDEO_ID
     if "youtu.be/" in url:
         return url.split("youtu.be/")[1].split("?")[0]
-    
-    # Pattern 3: youtube.com/embed/VIDEO_ID
     if "youtube.com/embed/" in url:
         return url.split("embed/")[1].split("?")[0]
-    
-    # Pattern 4: Just the video ID
     if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
         return url
-    
     raise ValueError(f"Could not extract video ID from URL: {url}")
 
 
 def format_timestamp(seconds: float) -> str:
-    """
-    Convert seconds to MM:SS or HH:MM:SS format.
-    
-    Args:
-        seconds: Time in seconds
-        
-    Returns:
-        str: Formatted timestamp
-    """
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
-    
     if hours > 0:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    else:
-        return f"{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
 
 
 def create_youtube_url_with_timestamp(video_id: str, start_time: float) -> str:
-    """
-    Create a YouTube URL with timestamp parameter.
-    
-    Args:
-        video_id: YouTube video ID
-        start_time: Start time in seconds
-        
-    Returns:
-        str: YouTube URL with &t= parameter
-    """
     return f"https://www.youtube.com/watch?v={video_id}&t={int(start_time)}s"
+
+
+def _load_transcript_with_ytdlp(video_id: str) -> Dict:
+    """
+    Fallback transcript loader using yt-dlp.
+    yt-dlp uses YouTube's Innertube API which has better availability
+    from cloud/hosted environments where direct YouTube access is blocked.
+    """
+    import yt_dlp
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    print(f"   Trying yt-dlp fallback for {video_id}...")
+
+    ydl_opts = {
+        "skip_download": True,
+        "writesubtitles": False,
+        "writeautomaticsub": False,
+        "subtitleslangs": ["en", "hi", "en-US", "en-GB"],
+        "subtitlesformat": "json3",
+        "quiet": True,
+        "no_warnings": True,
+        # Use Innertube API — avoids normal web scraping restrictions
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    if not info:
+        raise ConnectionError("yt-dlp could not retrieve video info")
+
+    # Find caption URL — prefer manual en, then auto en, then any
+    subtitles = info.get("subtitles", {})
+    auto_subtitles = info.get("automatic_captions", {})
+
+    caption_url = None
+    for lang_pool in [subtitles, auto_subtitles]:
+        for lang in ["en", "en-US", "en-GB", "hi"]:
+            if lang in lang_pool:
+                for fmt in lang_pool[lang]:
+                    if fmt.get("ext") == "json3":
+                        caption_url = fmt["url"]
+                        break
+                if caption_url:
+                    break
+        if caption_url:
+            break
+
+    # Last resort: first available language + format
+    if not caption_url:
+        for lang_pool in [subtitles, auto_subtitles]:
+            for lang, fmts in lang_pool.items():
+                for fmt in fmts:
+                    if fmt.get("ext") == "json3":
+                        caption_url = fmt["url"]
+                        break
+                if caption_url:
+                    break
+            if caption_url:
+                break
+
+    if not caption_url:
+        raise ValueError("No captions available via yt-dlp for this video.")
+
+    print(f"   Fetching captions from CDN...")
+    req = urllib.request.Request(caption_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = resp.read().decode("utf-8")
+
+    data = json.loads(raw)
+    events = data.get("events", [])
+
+    processed_transcript = []
+    full_text_parts = []
+
+    for event in events:
+        segs = event.get("segs")
+        if not segs:
+            continue
+        text = "".join(s.get("utf8", "") for s in segs).strip()
+        if not text or text == "\n":
+            continue
+        start_ms = event.get("tStartMs", 0)
+        dur_ms = event.get("dDurationMs", 0)
+        start = start_ms / 1000.0
+        duration = dur_ms / 1000.0
+
+        processed_transcript.append({
+            "text": text,
+            "start": start,
+            "duration": duration,
+            "timestamp": format_timestamp(start),
+            "url": create_youtube_url_with_timestamp(video_id, start),
+        })
+        full_text_parts.append(text)
+
+    if not processed_transcript:
+        raise ValueError("yt-dlp returned empty transcript.")
+
+    total_duration = 0.0
+    if processed_transcript:
+        last = processed_transcript[-1]
+        total_duration = last["start"] + last["duration"]
+
+    print(f"   ✅ yt-dlp loaded {len(processed_transcript)} segments")
+    return {
+        "video_id": video_id,
+        "video_url": f"https://www.youtube.com/watch?v={video_id}",
+        "transcript": processed_transcript,
+        "full_text": " ".join(full_text_parts),
+        "total_duration": total_duration,
+    }
 
 
 def load_youtube_transcript(
@@ -95,99 +164,58 @@ def load_youtube_transcript(
 ) -> Dict:
     """
     Load YouTube transcript with timestamps preserved.
-    
-    Args:
-        url: YouTube video URL or video ID
-        languages: List of language codes to try (default: ['en', 'hi', 'es', 'fr', 'de'])
-        
-    Returns:
-        Dict containing:
-            - video_id: str
-            - video_url: str
-            - transcript: List[Dict] with 'text', 'start', 'duration', 'timestamp', 'url'
-            - full_text: str (concatenated transcript)
-            - total_duration: float
-            
-    Raises:
-        ValueError: If video ID cannot be extracted
-        TranscriptsDisabled: If transcripts are disabled for the video
-        NoTranscriptFound: If no transcript in requested languages
-        VideoUnavailable: If video is unavailable
+    Tries youtube-transcript-api first; falls back to yt-dlp on network errors.
     """
     if languages is None:
-        # Try multiple languages by default
         languages = ['en', 'hi', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'zh-Hans', 'zh-Hant']
-    
+
+    video_id = extract_video_id(url)
+    print(f"📹 Loading transcript for video: {video_id}")
+
+    # ── Primary: youtube-transcript-api ───────────────────────
+    primary_error = None
     try:
-        # Extract video ID
-        video_id = extract_video_id(url)
-        print(f"📹 Loading transcript for video: {video_id}")
-        
-        # Fetch transcript using the correct API (v1.2.4)
-        # Need to create an instance first with custom headers
         api = YouTubeTranscriptApi()
         transcript_data = None
-        
+
         try:
-            # Try to fetch with requested languages
             print(f"   Fetching transcript...")
             transcript_data = api.fetch(video_id, languages=languages)
             print(f"   ✅ Found transcript")
         except NoTranscriptFound:
-            # Try without language filter
             try:
                 print(f"   Trying without language filter...")
                 transcript_data = api.fetch(video_id)
                 print(f"   ✅ Found transcript")
             except Exception as e:
-                print(f"   ❌ No transcript available: {str(e)}")
                 raise ValueError(
                     "No transcript available for this video. Make sure captions/subtitles are enabled."
                 ) from e
-        except Exception as e:
-            if isinstance(e, (TranscriptsDisabled, VideoUnavailable)):
-                raise
 
-            # DNS/network restrictions are common on hosted runtimes.
-            # Let the endpoint translate this into a clean 503 response.
-            print(f"   ❌ Error: {str(e)}")
-            raise ConnectionError(
-                "YouTube is unreachable from this runtime. Use /api/ingest/text as a fallback."
-            ) from e
-        
         print(f"✅ Loaded {len(transcript_data)} segments")
-        
-        # Process transcript with timestamps
+
         processed_transcript = []
         full_text_parts = []
-        
+
         for entry in transcript_data:
-            # FetchedTranscriptSnippet object with attributes (not dict)
             text = entry.text.strip()
             start = entry.start
             duration = entry.duration
-            
-            # Create enriched entry with timestamp info
-            processed_entry = {
+            processed_transcript.append({
                 'text': text,
                 'start': start,
                 'duration': duration,
                 'timestamp': format_timestamp(start),
                 'url': create_youtube_url_with_timestamp(video_id, start)
-            }
-            
-            processed_transcript.append(processed_entry)
+            })
             full_text_parts.append(text)
-        
-        # Combine all text
+
         full_text = ' '.join(full_text_parts)
-        
-        # Calculate total duration
-        total_duration = 0
+        total_duration = 0.0
         if transcript_data:
             last_entry = transcript_data[-1]
             total_duration = last_entry.start + last_entry.duration
-        
+
         result = {
             'video_id': video_id,
             'video_url': f"https://www.youtube.com/watch?v={video_id}",
@@ -195,52 +223,39 @@ def load_youtube_transcript(
             'full_text': full_text,
             'total_duration': total_duration
         }
-        
         print(f"📊 Total duration: {format_timestamp(result['total_duration'])}")
-        
         return result
-        
-    except RequestBlocked:
-        raise Exception("YouTube is temporarily blocking requests. Please wait a few minutes and try again.")
-    except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
+
+    except (TranscriptsDisabled, VideoUnavailable) as e:
+        # These mean the video itself has no captions — yt-dlp won't help either
         raise
+
+    except RequestBlocked as e:
+        print(f"   ⚠️  youtube-transcript-api blocked — trying yt-dlp fallback...")
+        primary_error = e
+
+    except (ConnectionError, OSError) as e:
+        # SSL EOF, DNS failure, etc. — try yt-dlp
+        print(f"   ⚠️  Network error ({type(e).__name__}) — trying yt-dlp fallback...")
+        primary_error = e
+
     except Exception as e:
-        # Keep logs concise on hosted runtimes while preserving root cause in message.
-        print(f"❌ Error loading transcript: {str(e)}")
-        raise
+        err_str = str(e).lower()
+        if any(x in err_str for x in ("ssl", "connection", "network", "unreachable", "timed out", "timeout")):
+            print(f"   ⚠️  Connection issue — trying yt-dlp fallback...")
+            primary_error = e
+        else:
+            print(f"❌ Error loading transcript: {str(e)}")
+            raise
 
-
-# Test function
-def test_youtube_loader():
-    """Test the YouTube loader with a sample video."""
-    # Using a popular educational video (3Blue1Brown)
-    test_url = "https://www.youtube.com/watch?v=aircAruvnKk"
-    
+    # ── Fallback: yt-dlp ──────────────────────────────────────
     try:
-        print("\n" + "="*60)
-        print("Testing YouTube Loader")
-        print("="*60)
-        
-        result = load_youtube_transcript(test_url)
-        
-        print(f"\nVideo ID: {result['video_id']}")
-        print(f"Total segments: {len(result['transcript'])}")
-        print(f"Total duration: {format_timestamp(result['total_duration'])}")
-        
-        # Show first 3 segments
-        print("\nFirst 3 segments:")
-        for i, segment in enumerate(result['transcript'][:3]):
-            print(f"\n[{segment['timestamp']}]")
-            print(f"Text: {segment['text']}")
-            print(f"URL: {segment['url']}")
-        
-        print("\n✅ YouTube loader test passed!")
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ Test failed: {str(e)}")
-        return False
-
-
-if __name__ == "__main__":
-    test_youtube_loader()
+        result = _load_transcript_with_ytdlp(video_id)
+        print(f"📊 Total duration: {format_timestamp(result['total_duration'])}")
+        return result
+    except Exception as ytdlp_err:
+        print(f"   ❌ yt-dlp fallback also failed: {ytdlp_err}")
+        # Re-raise a clear message so the API returns a helpful 503
+        raise ConnectionError(
+            "YouTube is unreachable from this runtime. Use /api/ingest/text as a fallback."
+        ) from primary_error
