@@ -125,7 +125,6 @@ SUMMARY_KEYWORDS = [
     "main topic",
     "what is this",
     "what does this",
-    "cover",
     "topics covered",
     "give me the summary",
     "give me summary",
@@ -297,29 +296,7 @@ def create_summary_chain(video_id: str):
     )
     
     print(f"✅ Summary chain created")
-    
-    return summary_chain, all_docs
-    
-    print(f"📄 Retrieved {len(all_docs)} chunks for summary")
-    
-    # Get LLM
-    llm = get_llm()
-    
-    # Create prompt
-    prompt = create_summary_prompt()
-    
-    # Create LCEL chain
-    summary_chain = (
-        {
-            "context": lambda _: format_docs(all_docs)
-        }
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    
-    print(f"✅ Summary chain created")
-    
+
     return summary_chain, all_docs
 
 
@@ -473,30 +450,34 @@ def handle_study_command(video_id: str, command: str) -> Dict:
         print(f"📚 Handling study command: {command} for video {video_id}")
 
         def get_full_transcript_text() -> str:
+            # Use vector store first (already ingested, no network needed)
+            try:
+                from app.rag.vector_store import load_vector_store
+                vector_store = load_vector_store(video_id)
+                if vector_store:
+                    all_docs = vector_store.similarity_search("main concepts explanation examples", k=200)
+                    # Sort by timestamp so we get the transcript in order
+                    all_docs.sort(key=lambda d: d.metadata.get("start", 0))
+                    transcript_text = " ".join([doc.page_content for doc in all_docs])
+                    if transcript_text:
+                        print(f"📄 Loaded transcript from vector store: {len(transcript_text)} characters")
+                        return transcript_text
+            except Exception as vector_error:
+                print(f"⚠️ Vector store load failed, trying YouTube: {vector_error}")
+
+            # Fallback: re-fetch from YouTube
             try:
                 from app.services.youtube_loader import load_youtube_transcript
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
                 transcript_data = load_youtube_transcript(video_url)
                 transcript_text = transcript_data.get("full_text", "")
                 if transcript_text:
-                    print(f"📄 Loaded full transcript from YouTube: {len(transcript_text)} characters")
+                    print(f"📄 Loaded transcript from YouTube fallback: {len(transcript_text)} characters")
                     return transcript_text
             except Exception as youtube_error:
-                print(f"⚠️ YouTube transcript reload failed, falling back to vector store: {youtube_error}")
+                print(f"❌ YouTube transcript fallback failed: {youtube_error}")
 
-            try:
-                from app.rag.vector_store import load_vector_store
-                vector_store = load_vector_store(video_id)
-                if not vector_store:
-                    return ""
-
-                all_docs = vector_store.similarity_search("main concepts explanation examples", k=120)
-                transcript_text = "\n".join([doc.page_content for doc in all_docs])
-                print(f"📄 Loaded transcript from vector store fallback: {len(transcript_text)} characters")
-                return transcript_text
-            except Exception as vector_error:
-                print(f"❌ Vector store transcript fallback failed: {vector_error}")
-                return ""
+            return ""
 
         transcript_text = get_full_transcript_text()
         if not transcript_text:

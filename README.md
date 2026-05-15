@@ -1,3 +1,13 @@
+---
+title: CortexTutor
+emoji: 🎓
+colorFrom: purple
+colorTo: cyan
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🎓 YouTube Learning Assistant
 
 An AI-powered learning assistant that helps you understand YouTube videos through intelligent Q&A. Built with RAG (Retrieval-Augmented Generation) architecture for accurate, context-aware responses.

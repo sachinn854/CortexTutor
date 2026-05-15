@@ -51,12 +51,14 @@ async def chat_ask(request: ChatRequest):
             # Detect question intent/complexity
             def is_simple_question(question: str) -> bool:
                 q = question.lower().strip()
-                simple_patterns = [
-                    "what is", "define", "tell me", "explain simply", 
-                    "in simple", "simply", "just tell", "briefly",
-                    "what are", "who is", "where is", "when is"
+                # Only treat as simple if user explicitly asks for brevity,
+                # not just because the question starts with "what is"
+                simple_signals = [
+                    "explain simply", "in simple words", "in simple terms",
+                    "simply", "just tell me", "briefly", "in short",
+                    "quick answer", "short answer"
                 ]
-                return any(pattern in q for pattern in simple_patterns)
+                return any(signal in q for signal in simple_signals)
             
             # Route based on question complexity, not just session
             if is_simple_question(request.question):
@@ -70,11 +72,7 @@ async def chat_ask(request: ChatRequest):
                     request.question,
                     request.session_id
                 )
-                
-                # Agent doesn't return sources, so get them separately
-                from app.rag.pipeline import ask_question as get_sources
-                sources_result = get_sources(request.video_id, request.question)
-                sources = sources_result.get("sources", [])
+                sources = result.get("sources", [])
             else:
                 print(f"📝 Using direct RAG (no session)")
                 result = ask_question(request.video_id, request.question)

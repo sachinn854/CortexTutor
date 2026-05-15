@@ -35,7 +35,7 @@ class LLMManager:
                 base_url="https://api.groq.com/openai/v1",
                 model=settings.groq_model,
                 temperature=0.7,
-                max_tokens=512,
+                max_tokens=2048,
             )
             
             # Test connection

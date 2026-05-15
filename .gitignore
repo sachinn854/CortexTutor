@@ -1,0 +1,102 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database & Vector Store
+vector_db/
+*.db
+*.sqlite
+*.sqlite3
+
+# Study Materials (generated content)
+study_materials/
+backend/study_materials/
+
+# Cache
+.cache/
+*.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Model files (if downloading locally)
+models/
+*.bin
+*.safetensors
+*.gguf
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Screenshots / local images
+Screenshot*.png
+*.png
+*.jpg
+
+# Documentation builds
+docs/_build/
+site/
