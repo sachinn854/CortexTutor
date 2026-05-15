@@ -10,7 +10,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 
-# Pre-create runtime dirs so the app doesn't need write-permission checks
+# Pre-download embedding model so first request isn't slow
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
+# Pre-create runtime dirs
 RUN mkdir -p ./backend/vector_db ./backend/study_materials
 
 WORKDIR /code/backend
