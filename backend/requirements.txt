@@ -17,6 +17,7 @@ sentence-transformers
 
 # YouTube & Video Processing
 youtube-transcript-api
+yt-dlp
 
 # Vector Database
 faiss-cpu
