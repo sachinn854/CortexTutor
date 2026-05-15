@@ -645,6 +645,90 @@ body {
     border-radius: 0 var(--r-xs) var(--r-xs) 0;
 }
 
+/* ─── Transcript Fallback Card ───────────────────────────────── */
+.fallback-card {
+    background: rgba(239,68,68,.06);
+    border: 1px solid rgba(239,68,68,.25);
+    border-radius: var(--r-sm);
+    padding: 20px;
+}
+
+.fallback-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #fca5a5;
+    margin-bottom: 6px !important;
+}
+
+.fallback-sub {
+    font-size: 13px;
+    color: var(--text-2);
+    margin-bottom: 14px !important;
+}
+
+.fallback-steps {
+    margin: 0 0 16px 18px !important;
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.8;
+}
+
+.fallback-steps strong { color: var(--text); }
+
+.fallback-steps kbd {
+    background: var(--bg-3);
+    border: 1px solid var(--border-2);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text);
+}
+
+.transcript-textarea {
+    width: 100%;
+    min-height: 130px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font-size: 13px;
+    font-family: var(--font);
+    padding: 12px;
+    resize: vertical;
+    outline: none;
+    transition: border-color var(--transition);
+    margin-bottom: 12px;
+    display: block;
+}
+
+.transcript-textarea:focus { border-color: rgba(124,58,237,.5); }
+
+.submit-transcript-btn {
+    padding: 10px 24px;
+    background: var(--grad);
+    border: none;
+    border-radius: var(--r-sm);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: var(--glow-sm);
+}
+
+.submit-transcript-btn:hover:not(:disabled) {
+    box-shadow: var(--glow);
+    transform: translateY(-1px);
+}
+
+.submit-transcript-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    transform: none;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 640px) {
     .header { padding: 0 16px; }

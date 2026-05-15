@@ -91,8 +91,15 @@ async function processVideo(url) {
             );
             userInput.placeholder = 'Ask anything about this video…';
         } else {
-            const msg = data.detail?.message || 'Failed to load video.';
-            addBotMessage(`**Error:** ${msg}\n\nMake sure the video has captions/subtitles enabled.`);
+            const errType = data.detail?.error_type || '';
+            const isBlocked = errType === 'NetworkResolutionError' || errType === 'RequestBlocked' ||
+                              (data.detail?.message || '').toLowerCase().includes('unreachable');
+            if (isBlocked) {
+                showTranscriptFallback(url);
+            } else {
+                const msg = data.detail?.message || 'Failed to load video.';
+                addBotMessage(`**Error:** ${msg}\n\nMake sure the video has captions/subtitles enabled.`);
+            }
         }
     } catch (err) {
         removeMessage(loadingId);
@@ -316,6 +323,94 @@ function escapeHtml(text) {
     const d = document.createElement('div');
     d.textContent = text;
     return d.innerHTML;
+}
+
+// ── Manual Transcript Fallback ────────────────────────────────
+function showTranscriptFallback(youtubeUrl) {
+    // Extract video ID from URL for later use
+    let videoId = '';
+    try {
+        if (youtubeUrl.includes('youtu.be/')) {
+            videoId = youtubeUrl.split('youtu.be/')[1].split('?')[0];
+        } else {
+            const u = new URL(youtubeUrl);
+            videoId = u.searchParams.get('v') || '';
+        }
+    } catch(e) {}
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.id = 'transcript-fallback';
+    msgDiv.innerHTML = `
+        <div class="message-avatar">⚠️</div>
+        <div class="message-content">
+            <div class="fallback-card">
+                <p class="fallback-title">YouTube is blocked on this server</p>
+                <p class="fallback-sub">Hosted servers pe YouTube block hota hai. Transcript manually copy karo:</p>
+                <ol class="fallback-steps">
+                    <li>YouTube pe video kholo → <strong>${youtubeUrl}</strong></li>
+                    <li>Video ke neeche <strong>...</strong> (More) pe click karo</li>
+                    <li><strong>Show transcript</strong> select karo</li>
+                    <li>Saara text select karo (<kbd>Ctrl+A</kbd>) aur copy karo (<kbd>Ctrl+C</kbd>)</li>
+                    <li>Neeche paste karo</li>
+                </ol>
+                <textarea id="manual-transcript" class="transcript-textarea" placeholder="Transcript yahan paste karo..."></textarea>
+                <button class="submit-transcript-btn" onclick="submitManualTranscript('${videoId}', '${youtubeUrl}')">
+                    Load Transcript
+                </button>
+            </div>
+        </div>
+    `;
+    messagesDiv.appendChild(msgDiv);
+    scrollToBottom();
+}
+
+async function submitManualTranscript(videoId, youtubeUrl) {
+    const textarea = document.getElementById('manual-transcript');
+    const text = textarea ? textarea.value.trim() : '';
+    if (!text) {
+        textarea.style.borderColor = 'var(--red)';
+        return;
+    }
+
+    const btn = document.querySelector('.submit-transcript-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+    try {
+        const res = await fetch(API + '/ingest/text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                transcript_text: text,
+                video_id: videoId || undefined,
+                title: youtubeUrl
+            })
+        });
+        const data = await res.json();
+
+        // Remove fallback card
+        document.getElementById('transcript-fallback')?.remove();
+
+        if (res.ok) {
+            state.videoId = data.video_id;
+            showVideoStatus(data.video_id);
+            // Show player only if we have a real YouTube video ID
+            if (videoId) addVideoPlayer(videoId);
+            addBotMessage(
+                `**Transcript loaded!**\n\n` +
+                `📝 Chunks: **${data.total_chunks}**\n\n` +
+                `Ab questions poochh sakte ho. Notes aur MCQs bhi kaam karenge.`
+            );
+            userInput.placeholder = 'Ask anything about this video…';
+        } else {
+            addBotMessage(`**Error:** ${data.detail?.message || 'Failed to load transcript.'}`);
+        }
+    } catch(err) {
+        addBotMessage(`**Network error:** ${err.message}`);
+    }
+
+    state.isProcessing = false;
+    setInputState(true);
 }
 
 // ── Boot ──────────────────────────────────────────────────────
