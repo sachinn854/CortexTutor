@@ -607,19 +607,13 @@ def _build_fallback_notes_from_context(full_context: str, video_id: str) -> Dict
 def generate_mcqs_with_options(transcript_text: str, video_id: str) -> List[Dict]:
     """
     Generate MCQ questions with multiple choice options from transcript.
-    
-    Args:
-        transcript_text: Full transcript text
-        video_id: Video ID
-        
-    Returns:
-        List of MCQ dicts with options
     """
     print(f"\n📋 Generating MCQs with options for {video_id}...")
-    
+
     try:
-        full_context = _build_global_context(transcript_text, video_id)
-        if not full_context:
+        # Use first 5000 chars — enough context without needing map-reduce
+        truncated = (transcript_text or "").strip()[:5000]
+        if not truncated:
             return []
 
         llm = get_llm()
@@ -629,7 +623,7 @@ def generate_mcqs_with_options(transcript_text: str, video_id: str) -> List[Dict
         )
         chain = prompt | llm | StrOutputParser()
 
-        response = chain.invoke({"transcript": full_context})
+        response = chain.invoke({"transcript": truncated})
         print(f"🔍 MCQ response (first 300 chars): {response[:300]}")
 
         json_str = _extract_balanced_json(response, "[")
@@ -641,12 +635,16 @@ def generate_mcqs_with_options(transcript_text: str, video_id: str) -> List[Dict
                 continue
             options = item.get("options", [])
             correct_answer = item.get("correct_answer", -1)
+            # Accept int or string-encoded int for correct_answer
+            if isinstance(correct_answer, str) and correct_answer.isdigit():
+                correct_answer = int(correct_answer)
+                item["correct_answer"] = correct_answer
             if isinstance(options, list) and len(options) == 4 and isinstance(correct_answer, int):
                 valid_mcqs.append(item)
 
         print(f"✅ Generated {len(valid_mcqs)} MCQs with options")
         return valid_mcqs[:5]
-        
+
     except Exception as e:
         print(f"❌ MCQ generation failed: {str(e)}")
         return []
@@ -655,20 +653,14 @@ def generate_mcqs_with_options(transcript_text: str, video_id: str) -> List[Dict
 def generate_detailed_notes_text(transcript_text: str, video_id: str) -> str:
     """
     Generate detailed study notes as plain markdown text.
-
-    Args:
-        transcript_text: Full transcript text
-        video_id: Video ID
-
-    Returns:
-        Markdown notes text
     """
     print(f"\n📖 Generating detailed notes text for {video_id}...")
 
     try:
-        full_context = _build_global_context(transcript_text, video_id)
-        if not full_context:
-            return "# 📝 Study Notes\n\n⚠️ Could not build lecture context for notes generation."
+        # Use first 5000 chars — enough context without needing map-reduce
+        truncated = (transcript_text or "").strip()[:5000]
+        if not truncated:
+            return "# Study Notes\n\nCould not build lecture context for notes generation."
 
         llm = get_llm()
         prompt = PromptTemplate(
@@ -677,18 +669,18 @@ def generate_detailed_notes_text(transcript_text: str, video_id: str) -> str:
         )
         chain = prompt | llm | StrOutputParser()
 
-        notes_text = chain.invoke({"transcript": full_context}).strip()
+        notes_text = chain.invoke({"transcript": truncated}).strip()
         if not notes_text:
-            return "# 📝 Study Notes\n\n⚠️ Notes generation returned empty output."
+            return "# Study Notes\n\nNotes generation returned empty output."
 
-        if "# 📝 Study Notes" not in notes_text:
-            notes_text = "# 📝 Study Notes\n\n" + notes_text
+        if "# " not in notes_text:
+            notes_text = "# Study Notes\n\n" + notes_text
 
         print(f"✅ Generated notes text ({len(notes_text)} chars)")
         return notes_text
 
     except Exception as e:
         print(f"❌ Notes text generation failed: {str(e)}")
-        return "# 📝 Study Notes\n\n⚠️ Error generating notes. Please try again."
+        return "# Study Notes\n\nError generating notes. Please try again."
 
 

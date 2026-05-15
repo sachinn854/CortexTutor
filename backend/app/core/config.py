@@ -18,8 +18,7 @@ class Settings(BaseSettings):
     
     # Groq Configuration (Fast & Free API)
     groq_api_key: Optional[str] = None
-    groq_model: str = "llama-3.1-8b-instant"  # Fast model
-    # Other options: "llama-3.3-70b-versatile", "mixtral-8x7b-32768"
+    groq_model: str = "llama-3.3-70b-versatile"
     
     # Embedding Model
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"

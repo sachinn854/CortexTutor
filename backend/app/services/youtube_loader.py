@@ -141,11 +141,9 @@ def load_youtube_transcript(
                 print(f"   ✅ Found transcript")
             except Exception as e:
                 print(f"   ❌ No transcript available: {str(e)}")
-                raise NoTranscriptFound(
-                    video_id,
-                    "No transcript available for this video. Make sure captions/subtitles are enabled.",
-                    languages
-                )
+                raise ValueError(
+                    "No transcript available for this video. Make sure captions/subtitles are enabled."
+                ) from e
         except Exception as e:
             if isinstance(e, (TranscriptsDisabled, VideoUnavailable)):
                 raise

@@ -3,9 +3,16 @@ Main FastAPI application entry point.
 Serves both API and frontend.
 """
 
+import sys
+import io
+# Force UTF-8 stdout/stderr on Windows so emoji in print() doesn't crash the server
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from app.core.config import settings
 from app.core.rate_limiter import RateLimitMiddleware
 from app.core.timeout import TimeoutMiddleware
@@ -83,13 +90,17 @@ async def serve_frontend():
 
 @app.get("/styles.css")
 async def serve_css():
-    """Serve CSS file."""
-    return FileResponse(os.path.join(frontend_dir, "styles.css"))
+    return FileResponse(
+        os.path.join(frontend_dir, "styles.css"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+    )
 
 @app.get("/app.js")
 async def serve_js():
-    """Serve JS file."""
-    return FileResponse(os.path.join(frontend_dir, "app.js"))
+    return FileResponse(
+        os.path.join(frontend_dir, "app.js"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+    )
 
 
 @app.get("/health")

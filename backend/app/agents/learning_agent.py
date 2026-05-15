@@ -158,12 +158,13 @@ def chat_with_agent(
         
         response = {
             "answer": answer,
+            "sources": rag_sources,
             "video_id": video_id,
             "session_id": session_id
         }
-        
+
         print(f"✅ Conversational response generated")
-        
+
         return response
         
     except Exception as e:
