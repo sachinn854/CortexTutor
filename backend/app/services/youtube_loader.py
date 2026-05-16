@@ -66,7 +66,9 @@ def _load_transcript_with_ytdlp(video_id: str) -> Dict:
         "subtitlesformat": "json3",
         "quiet": True,
         "no_warnings": True,
-        "socket_timeout": 20,
+        "socket_timeout": 10,
+        "retries": 0,          # don't retry — fail fast on blocked environments
+        "fragment_retries": 0,
         # Use Innertube API — avoids normal web scraping restrictions
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
