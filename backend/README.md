@@ -1,12 +1,3 @@
----
-title: CortexTutor Backend
-emoji: "🎓"
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
-
 # CortexTutor Backend
 
 FastAPI backend for CortexTutor running in a Hugging Face Docker Space.
