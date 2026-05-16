@@ -1,5 +1,6 @@
 // Relative URL — works on localhost AND on HF Spaces without any change
 const API = "/api";
+const CORS_PROXY = "https://corsproxy.io/?";
 
 let state = {
     videoId: null,
@@ -21,7 +22,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
         return res;
     } catch (err) {
         clearTimeout(id);
-        if (err.name === 'AbortError') throw new Error('Request timed out after 2 minutes. The server may be overloaded.');
+        if (err.name === 'AbortError') throw new Error('Request timed out.');
         throw err;
     }
 }
@@ -81,21 +82,89 @@ async function handleSend() {
     }
 }
 
+// ── Extract Video ID ──────────────────────────────────────────
+function extractVideoId(url) {
+    try {
+        if (url.includes('youtu.be/')) return url.split('youtu.be/')[1].split(/[?#]/)[0];
+        const u = new URL(url);
+        return u.searchParams.get('v') || '';
+    } catch { return ''; }
+}
+
+// ── Browser-side Transcript Fetch (via CORS proxy) ────────────
+async function fetchTranscriptInBrowser(videoId) {
+    const pageUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const proxied = CORS_PROXY + encodeURIComponent(pageUrl);
+
+    // Fetch the YouTube page HTML through the CORS proxy
+    const pageRes = await fetchWithTimeout(proxied, {}, 25000);
+    if (!pageRes.ok) throw new Error(`Proxy returned ${pageRes.status}`);
+    const html = await pageRes.text();
+
+    // Extract ytInitialPlayerResponse JSON using brace-depth counting
+    const marker = 'ytInitialPlayerResponse = ';
+    const markerIdx = html.indexOf(marker);
+    if (markerIdx === -1) throw new Error('Could not find player response in page');
+
+    const jsonStart = markerIdx + marker.length;
+    let depth = 0, i = jsonStart, inStr = false, escaped = false;
+    for (; i < html.length; i++) {
+        const c = html[i];
+        if (escaped) { escaped = false; continue; }
+        if (c === '\\' && inStr) { escaped = true; continue; }
+        if (c === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) { i++; break; } }
+    }
+    const playerResp = JSON.parse(html.slice(jsonStart, i));
+
+    // Get caption tracks
+    const tracks = playerResp?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!tracks?.length) throw new Error('No captions available for this video');
+
+    // Prefer English, else first available
+    const track = tracks.find(t => t.languageCode?.startsWith('en')) || tracks[0];
+    const captionUrl = track.baseUrl + '&fmt=json3';
+
+    // Fetch the actual captions
+    const captRes = await fetchWithTimeout(CORS_PROXY + encodeURIComponent(captionUrl), {}, 20000);
+    if (!captRes.ok) throw new Error(`Caption fetch failed: ${captRes.status}`);
+    const capData = await captRes.json();
+
+    // Parse json3 events into timestamped text
+    const events = capData.events || [];
+    const lines = [];
+    for (const ev of events) {
+        if (!ev.segs) continue;
+        const text = ev.segs.map(s => s.utf8 || '').join('').replace(/\n/g, ' ').trim();
+        if (!text) continue;
+        const sec = (ev.tStartMs || 0) / 1000;
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60).toString().padStart(2, '0');
+        lines.push(`[${m}:${s}] ${text}`);
+    }
+
+    if (!lines.length) throw new Error('Transcript is empty');
+    return lines.join('\n');
+}
+
 // ── Process Video ─────────────────────────────────────────────
 async function processVideo(url) {
     state.isProcessing = true;
     setInputState(false);
     userInput.value = '';
 
-    // Remove welcome card
     const wc = document.getElementById('welcome-card');
     if (wc) wc.remove();
 
     addUserMessage(url);
-    const loadingId = addBotMessage('Processing video… this may take 30–60 seconds.', true);
+    let loadingId = addBotMessage('Processing video… this may take 30–60 seconds.', true);
+
+    let serverBlocked = false;
 
     try {
-        const res  = await fetchWithTimeout(API + '/ingest/video', {
+        const res = await fetchWithTimeout(API + '/ingest/video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
@@ -104,35 +173,79 @@ async function processVideo(url) {
         removeMessage(loadingId);
 
         if (res.ok) {
-            state.videoId = data.video_id;
-            showVideoStatus(data.video_id);
-            addVideoPlayer(data.video_id);
-            addBotMessage(
-                `**Video loaded successfully!**\n\n` +
-                `📊 Duration: **${data.duration}** &nbsp;·&nbsp; ` +
-                `📝 Segments: **${data.total_segments}**\n\n` +
-                `Ask me anything about this video — questions, summaries, timestamps. ` +
-                `Or use the **Notes** / **MCQs** buttons above the input.`
-            );
-            userInput.placeholder = 'Ask anything about this video…';
-        } else {
-            const errType = data.detail?.error_type || '';
-            const isBlocked = errType === 'NetworkResolutionError' || errType === 'RequestBlocked' ||
-                              (data.detail?.message || '').toLowerCase().includes('unreachable');
-            if (isBlocked) {
-                showTranscriptFallback(url);
-            } else {
-                const msg = data.detail?.message || 'Failed to load video.';
-                addBotMessage(`**Error:** ${msg}\n\nMake sure the video has captions/subtitles enabled.`);
-            }
+            onVideoLoaded(data, url);
+            state.isProcessing = false;
+            setInputState(true);
+            return;
+        }
+
+        const errType = data.detail?.error_type || '';
+        serverBlocked = errType === 'NetworkResolutionError' || errType === 'RequestBlocked' ||
+                        (data.detail?.message || '').toLowerCase().includes('unreachable');
+
+        if (!serverBlocked) {
+            const msg = data.detail?.message || 'Failed to load video.';
+            addBotMessage(`**Error:** ${msg}\n\nMake sure the video has captions/subtitles enabled.`);
+            state.isProcessing = false;
+            setInputState(true);
+            return;
         }
     } catch (err) {
         removeMessage(loadingId);
         addBotMessage(`**Network error:** ${err.message}`);
+        state.isProcessing = false;
+        setInputState(true);
+        return;
+    }
+
+    // ── Server is blocked → try browser-side fetch ────────────
+    const videoId = extractVideoId(url);
+    loadingId = addBotMessage('Server blocked by YouTube. Trying browser method…', true);
+
+    try {
+        const transcript = await fetchTranscriptInBrowser(videoId);
+        removeMessage(loadingId);
+        loadingId = addBotMessage('Transcript fetched! Building knowledge base…', true);
+
+        const res2 = await fetchWithTimeout(API + '/ingest/text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                transcript_text: transcript,
+                video_id: videoId || undefined,
+                title: url
+            })
+        }, 60000);
+        const data2 = await res2.json();
+        removeMessage(loadingId);
+
+        if (res2.ok) {
+            onVideoLoaded(data2, url, videoId);
+        } else {
+            addBotMessage(`**Error:** ${data2.detail?.message || 'Failed to process transcript.'}`);
+        }
+    } catch (browserErr) {
+        removeMessage(loadingId);
+        // Both server and browser failed — show manual paste UI
+        showTranscriptFallback(url);
     }
 
     state.isProcessing = false;
     setInputState(true);
+}
+
+function onVideoLoaded(data, url, playerVideoId) {
+    const vid = playerVideoId || data.video_id;
+    state.videoId = data.video_id;
+    showVideoStatus(data.video_id);
+    if (vid && vid.length === 11) addVideoPlayer(vid);
+    addBotMessage(
+        `**Video loaded successfully!**\n\n` +
+        `📝 Chunks: **${data.total_chunks || data.total_segments}**\n\n` +
+        `Ask me anything about this video — questions, summaries, timestamps. ` +
+        `Or use the **Notes** / **MCQs** buttons above the input.`
+    );
+    userInput.placeholder = 'Ask anything about this video…';
 }
 
 // ── Ask Question ──────────────────────────────────────────────
@@ -152,7 +265,7 @@ async function askQuestion(question) {
     const loadingId = addBotMessage('', true, true);
 
     try {
-        const res  = await fetchWithTimeout(API + '/chat/ask', {
+        const res = await fetchWithTimeout(API + '/chat/ask', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -195,11 +308,11 @@ function detectStudyCommand(question) {
 }
 
 async function handleStudyCommand(command, originalQuestion) {
-    const label    = command === 'notes' ? 'study notes' : command === 'mcqs' ? 'quiz questions' : 'flashcards';
+    const label     = command === 'notes' ? 'study notes' : command === 'mcqs' ? 'quiz questions' : 'flashcards';
     const loadingId = addBotMessage(`Generating ${label}…`, true);
 
     try {
-        const res  = await fetchWithTimeout(API + '/chat/ask', {
+        const res = await fetchWithTimeout(API + '/chat/ask', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -242,10 +355,9 @@ function setInputState(enabled) {
 }
 
 function showVideoStatus(videoId) {
-    const statusEl   = document.getElementById('video-status');
-    const statusText = document.getElementById('video-status-text');
+    const statusEl     = document.getElementById('video-status');
+    const statusText   = document.getElementById('video-status-text');
     const quickActions = document.getElementById('quick-actions');
-
     statusEl.classList.add('active');
     statusText.textContent = videoId;
     if (quickActions) quickActions.classList.add('visible');
@@ -272,7 +384,7 @@ function renderMarkdown(text) {
 }
 
 function addBotMessage(text, isLoading = false, isTyping = false) {
-    const id  = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+    const id  = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     const div = document.createElement('div');
     div.id        = id;
     div.className = 'message bot';
@@ -350,18 +462,9 @@ function escapeHtml(text) {
     return d.innerHTML;
 }
 
-// ── Manual Transcript Fallback ────────────────────────────────
+// ── Manual Transcript Fallback (last resort) ──────────────────
 function showTranscriptFallback(youtubeUrl) {
-    // Extract video ID from URL for later use
-    let videoId = '';
-    try {
-        if (youtubeUrl.includes('youtu.be/')) {
-            videoId = youtubeUrl.split('youtu.be/')[1].split('?')[0];
-        } else {
-            const u = new URL(youtubeUrl);
-            videoId = u.searchParams.get('v') || '';
-        }
-    } catch(e) {}
+    const videoId = extractVideoId(youtubeUrl);
 
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot';
@@ -370,16 +473,16 @@ function showTranscriptFallback(youtubeUrl) {
         <div class="message-avatar">⚠️</div>
         <div class="message-content">
             <div class="fallback-card">
-                <p class="fallback-title">YouTube is blocked on this server</p>
-                <p class="fallback-sub">Hosted servers pe YouTube block hota hai. Transcript manually copy karo:</p>
+                <p class="fallback-title">Auto-fetch failed — paste transcript manually</p>
+                <p class="fallback-sub">Both server and browser methods failed. Copy the transcript from YouTube:</p>
                 <ol class="fallback-steps">
-                    <li>YouTube pe video kholo → <strong>${youtubeUrl}</strong></li>
-                    <li>Video ke neeche <strong>...</strong> (More) pe click karo</li>
-                    <li><strong>Show transcript</strong> select karo</li>
-                    <li>Saara text select karo (<kbd>Ctrl+A</kbd>) aur copy karo (<kbd>Ctrl+C</kbd>)</li>
-                    <li>Neeche paste karo</li>
+                    <li>Open → <a href="${youtubeUrl}" target="_blank" rel="noopener" style="color:var(--cyan)">${youtubeUrl}</a></li>
+                    <li>Click <strong>⋯ More</strong> below the video</li>
+                    <li>Click <strong>Show transcript</strong></li>
+                    <li>Select all (<kbd>Ctrl+A</kbd>) → Copy (<kbd>Ctrl+C</kbd>)</li>
+                    <li>Paste below</li>
                 </ol>
-                <textarea id="manual-transcript" class="transcript-textarea" placeholder="Transcript yahan paste karo..."></textarea>
+                <textarea id="manual-transcript" class="transcript-textarea" placeholder="Paste transcript here…"></textarea>
                 <button class="submit-transcript-btn" onclick="submitManualTranscript('${videoId}', '${youtubeUrl}')">
                     Load Transcript
                 </button>
@@ -394,7 +497,7 @@ async function submitManualTranscript(videoId, youtubeUrl) {
     const textarea = document.getElementById('manual-transcript');
     const text = textarea ? textarea.value.trim() : '';
     if (!text) {
-        textarea.style.borderColor = 'var(--red)';
+        textarea.style.borderColor = 'var(--red, #ef4444)';
         return;
     }
 
@@ -402,7 +505,7 @@ async function submitManualTranscript(videoId, youtubeUrl) {
     if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
 
     try {
-        const res = await fetch(API + '/ingest/text', {
+        const res = await fetchWithTimeout(API + '/ingest/text', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -410,27 +513,23 @@ async function submitManualTranscript(videoId, youtubeUrl) {
                 video_id: videoId || undefined,
                 title: youtubeUrl
             })
-        });
+        }, 60000);
         const data = await res.json();
 
-        // Remove fallback card
         document.getElementById('transcript-fallback')?.remove();
 
         if (res.ok) {
             state.videoId = data.video_id;
             showVideoStatus(data.video_id);
-            // Show player only if we have a real YouTube video ID
             if (videoId) addVideoPlayer(videoId);
             addBotMessage(
-                `**Transcript loaded!**\n\n` +
-                `📝 Chunks: **${data.total_chunks}**\n\n` +
-                `Ab questions poochh sakte ho. Notes aur MCQs bhi kaam karenge.`
+                `**Transcript loaded!**\n\n📝 Chunks: **${data.total_chunks}**\n\nAsk me anything!`
             );
             userInput.placeholder = 'Ask anything about this video…';
         } else {
             addBotMessage(`**Error:** ${data.detail?.message || 'Failed to load transcript.'}`);
         }
-    } catch(err) {
+    } catch (err) {
         addBotMessage(`**Network error:** ${err.message}`);
     }
 
