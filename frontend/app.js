@@ -26,22 +26,25 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
     }
 }
 
-// Fetches a URL through a CORS proxy, trying corsproxy.io then allorigins.win.
+// Fetches a URL through a CORS proxy, trying multiple proxies in order.
 async function proxyFetch(targetUrl, timeoutMs = 25000) {
-    try {
-        const r = await fetchWithTimeout(
-            'https://corsproxy.io/?' + encodeURIComponent(targetUrl), {}, timeoutMs
-        );
-        if (r.ok) return await r.text();
-    } catch(e) { /* fall through to second proxy */ }
+    const t = Math.min(timeoutMs, 15000);
 
-    const r2 = await fetchWithTimeout(
-        'https://api.allorigins.win/get?url=' + encodeURIComponent(targetUrl), {}, timeoutMs
-    );
-    if (!r2.ok) throw new Error(`All proxies failed (${r2.status})`);
-    const j = await r2.json();
-    if (!j.contents) throw new Error('Proxy returned empty content');
-    return j.contents;
+    try {
+        const r = await fetchWithTimeout('https://corsproxy.io/?' + encodeURIComponent(targetUrl), {}, t);
+        if (r.ok) return await r.text();
+    } catch(e) { console.warn('corsproxy.io:', e.message); }
+
+    try {
+        // /raw returns content directly (no JSON wrapper, better CORS support)
+        const r = await fetchWithTimeout('https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl), {}, t);
+        if (r.ok) return await r.text();
+    } catch(e) { console.warn('allorigins/raw:', e.message); }
+
+    // Last resort
+    const r = await fetchWithTimeout('https://thingproxy.freeboard.io/fetch/' + targetUrl, {}, timeoutMs);
+    if (!r.ok) throw new Error(`All proxies failed (${r.status})`);
+    return await r.text();
 }
 
 // ── Init ──────────────────────────────────────────────────────
@@ -157,12 +160,14 @@ async function fetchTranscriptInBrowser(videoId) {
 async function fetchTranscriptViaPiped(videoId) {
     const instances = [
         'https://pipedapi.kavin.rocks',
-        'https://piped-api.garudalinux.org',
-        'https://api.piped.projectsegfau.lt'
+        'https://pipedapi.darkness.services',
+        'https://pipedapi.adminforge.de',
+        'https://watchapi.whatever.social',
+        'https://api.piped.yt'
     ];
     for (const base of instances) {
         try {
-            const r = await fetchWithTimeout(`${base}/streams/${videoId}`, {}, 10000);
+            const r = await fetchWithTimeout(`${base}/streams/${videoId}`, {}, 20000);
             if (!r.ok) continue;
             const data = await r.json();
             const subs = data.subtitles || [];
