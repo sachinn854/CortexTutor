@@ -145,20 +145,15 @@ function parseVTT(text) {
     return lines;
 }
 
-const CF_WORKER = 'https://nameless-wind-aae4.cs23b1042.workers.dev/';
-
 // ── Browser-side Transcript Fetch ────────────────────────────
 async function fetchTranscriptInBrowser(videoId) {
-    // Primary: Cloudflare Worker (reliable, no CORS issues)
+    // Primary: Invidious API (CORS-enabled, community-run, user's residential IP)
     try {
-        const r = await fetchWithTimeout(`${CF_WORKER}?v=${videoId}`, {}, 30000);
-        const data = await r.json();
-        if (data.transcript) return data.transcript;
-        throw new Error(data.error || 'Worker returned empty transcript');
+        return await fetchTranscriptViaInvidious(videoId);
     } catch(e) {
-        console.warn('CF Worker failed:', e.message);
+        console.warn('Invidious failed:', e.message);
     }
-    // Fallback: Piped API
+    // Secondary: Piped API
     try {
         return await fetchTranscriptViaPiped(videoId);
     } catch(e) {
@@ -166,6 +161,39 @@ async function fetchTranscriptInBrowser(videoId) {
     }
     // Last resort: CORS proxy scrape
     return await fetchTranscriptViaScrape(videoId);
+}
+
+async function fetchTranscriptViaInvidious(videoId) {
+    const instances = [
+        'https://iv.datura.network',
+        'https://invidious.fdn.fr',
+        'https://invidious.privacyredirect.com',
+        'https://invidious.lunar.icu',
+        'https://inv.tux.pizza',
+        'https://invidious.nerdvpn.de',
+        'https://invidious.io.lol',
+        'https://invidious.bitsanddrinks.com',
+    ];
+    for (const base of instances) {
+        try {
+            const r = await fetchWithTimeout(`${base}/api/v1/videos/${videoId}?fields=captions`, {}, 12000);
+            if (!r.ok) continue;
+            const data = await r.json();
+            const captions = data.captions || [];
+            const cap = captions.find(c => c.language_code?.startsWith('en') && !c.label?.toLowerCase().includes('auto'))
+                     || captions.find(c => c.language_code?.startsWith('en'))
+                     || captions[0];
+            if (!cap?.url) continue;
+            const cr = await fetchWithTimeout(base + cap.url, {}, 12000);
+            if (!cr.ok) continue;
+            const text = await cr.text();
+            const lines = parseVTT(text);
+            if (lines.length > 0) return lines.join('\n');
+        } catch(e) {
+            console.warn(`Invidious ${base}:`, e.message);
+        }
+    }
+    throw new Error('All Invidious instances failed');
 }
 
 async function fetchTranscriptViaPiped(videoId) {
