@@ -8,281 +8,125 @@ app_port: 7860
 pinned: false
 ---
 
-# 🎓 YouTube Learning Assistant
+# CortexTutor — AI-Powered YouTube Learning Assistant
 
-An AI-powered learning assistant that helps you understand YouTube videos through intelligent Q&A. Built with RAG (Retrieval-Augmented Generation) architecture for accurate, context-aware responses.
+An intelligent learning assistant that transforms any YouTube video into an interactive study session. Built with a full RAG (Retrieval-Augmented Generation) pipeline, it extracts video transcripts, builds a semantic knowledge base, and answers questions with pinpoint timestamp references.
 
 ![Python](https://img.shields.io/badge/Python-3.13-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green)
 ![LangChain](https://img.shields.io/badge/LangChain-Latest-orange)
+![FAISS](https://img.shields.io/badge/FAISS-Vector_DB-purple)
+![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-red)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
-## ✨ Features
+---
 
-### 🎯 Core Capabilities
-- **Smart Q&A**: Ask questions about any YouTube video and get accurate answers
-- **Study Materials**: Generate comprehensive notes and MCQ quizzes on-demand
-- **Timestamp Support**: Reference specific moments (e.g., "What was explained at 2:51?")
-- **Conversation Memory**: Maintains context across multiple questions
-- **Auto-Summarization**: Get comprehensive summaries of video content
-- **Source Citations**: Every answer includes relevant timestamps
+## Demo
 
-### 🧠 Advanced RAG Pipeline
-- **Intelligent Chunking**: Optimized 800-char chunks with 150-char overlap
-- **Semantic Search**: FAISS vector database with sentence-transformers embeddings
-- **Hybrid Retrieval**: Combines semantic similarity + timestamp-based lookup
-- **Intent Detection**: Automatically routes between Q&A, summary, and timestamp modes
-- **Anti-Repetition**: Prompts engineered to avoid redundant responses
+> Run locally (see Quick Start below) and paste any YouTube URL with captions.
 
-### 📚 Study Materials
-- **Detailed Notes**: Generate comprehensive study notes from full lecture context
-- **MCQ Questions**: Create multiple-choice quizzes with 4 options and explanations
-- **Full Context Processing**: Uses chunked map-reduce for complete lecture coverage
-- **One-Click Generation**: Buttons appear after video load for instant access
+**Example interactions:**
+- *"What is this lecture about?"*
+- *"Explain what was said at 3:20"*
+- *"Generate study notes"*
+- *"/mcqs — make a quiz from this video"*
 
-### 🎨 Modern UI/UX
-- **ChatGPT-Style Interface**: Dark theme, smooth animations, professional design
-- **Real-time Processing**: Live status updates during video ingestion
-- **Embedded Player**: Watch video while asking questions
-- **Responsive Design**: Works on desktop and mobile
+---
 
-## 🚀 Quick Start
+## Features
 
-### Prerequisites
-- Python 3.13+
-- Groq API Key (free tier available)
-
-### Installation
-
-1. **Clone the repository**
-```bash
-git clone <your-repo-url>
-cd CortexTutor
-```
-
-2. **Set up Python environment**
-```bash
-python -m venv venv
-.\venv\Scripts\activate  # Windows
-source venv/bin/activate  # Mac/Linux
-```
-
-3. **Install dependencies**
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-4. **Configure environment**
-```bash
-# Copy .env.example to .env
-cp .env.example .env
-
-# Add your Groq API key
-GROQ_API_KEY=your_groq_api_key_here
-```
-
-Get your free Groq API key: https://console.groq.com
-
-5. **Run the application**
-```bash
-# Start backend (from backend directory)
-python -m uvicorn app.main:app --reload
-
-# Access the app
-# Open browser: http://localhost:8000
-```
-
-## 📖 Usage
-
-### Basic Workflow
-
-1. **Paste YouTube URL**
-   - Open http://localhost:8000
-   - Paste any YouTube video URL
-   - Wait 30-60 seconds for processing
-
-2. **Ask Questions or Generate Study Materials**
-   ```
-   "What is this video about?"
-   "Explain the concept at 2:51"
-   "How does attention mechanism work?"
-   "Summarize the main points"
-   ```
-   
-   Or use study material buttons:
-   - Click **Notes** for comprehensive study notes
-   - Click **MCQs** for quiz questions with answers
-
-3. **Get Answers**
-   - Receive accurate, context-aware responses
-   - See relevant timestamps
-   - Continue conversation naturally
-
-### Advanced Features
-
-**Timestamp Queries**
-```
-"What was explained at 3:20?"
-"I didn't understand the part at 5:00"
-"Can you explain what happens around 2:51?"
-```
-
-**Summary Requests**
-```
-"Summarize this video"
-"What are the main topics?"
-"Give me an overview"
-```
-
-**Follow-up Questions**
-```
-"Can you explain more?"
-"What did you mean by that?"
-"How does that relate to what we discussed?"
-```
-
-**Study Material Commands**
-```
-"/notes" - Generate detailed study notes
-"/mcqs" - Generate MCQ quiz questions
-"give me notes from this lecture"
-"can you make 5 mcqs with options?"
-```
-
-## 🏗️ Architecture
-
-### Tech Stack
-
-**Backend**
-- **FastAPI**: High-performance API framework
-- **LangChain**: RAG orchestration and LLM integration
-- **Groq**: Ultra-fast LLM inference (llama-3.1-8b-instant)
-- **FAISS**: Vector similarity search
-- **Sentence Transformers**: Text embeddings (all-MiniLM-L6-v2)
-
-**Frontend**
-- **Vanilla JavaScript**: No framework overhead
-- **Modern CSS**: ChatGPT-inspired dark theme
-- **Responsive Design**: Mobile-friendly interface
+### Core
+- **Semantic Q&A** — Ask anything about the video; answers are grounded in transcript context
+- **Timestamp Search** — "What happened at 2:51?" maps directly to the relevant segment
+- **Auto Notes** — One-click generation of structured study notes from full lecture context
+- **MCQ Quiz** — Generate multiple-choice questions with explanations on demand
+- **Conversation Memory** — Maintains context across follow-up questions
+- **Source Citations** — Every answer includes the relevant timestamp references
 
 ### RAG Pipeline
+- **Intelligent Chunking** — 800-char chunks with 150-char overlap, preserving semantic boundaries
+- **Hybrid Retrieval** — Combines FAISS semantic search with timestamp-based direct lookup
+- **Intent Detection** — Automatically routes between Q&A, summary, and timestamp queries
+- **Map-Reduce Summarization** — Processes full transcripts in chunks for notes/MCQ generation
+- **Embedding Model** — `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI + Uvicorn |
+| LLM | Groq (LLaMA 3.3 70B) |
+| RAG Framework | LangChain |
+| Vector DB | FAISS |
+| Embeddings | Sentence Transformers |
+| Transcript | youtube-transcript-api + yt-dlp |
+| Frontend | Vanilla JS + CSS (no framework) |
+
+---
+
+## Quick Start (Local)
+
+**Prerequisites:** Python 3.10+, Groq API key (free at console.groq.com)
+
+```bash
+# 1. Clone
+git clone https://github.com/sachinn854/CortexTutor.git
+cd CortexTutor
+
+# 2. Virtual environment
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Mac/Linux
+
+# 3. Install dependencies
+cd backend
+pip install -r requirements.txt
+
+# 4. Create .env file
+echo GROQ_API_KEY=your_key_here > .env
+
+# 5. Run
+uvicorn app.main:app --reload
+
+# Open http://localhost:8000
+```
+
+Paste any YouTube URL → wait ~30s for ingestion → ask questions.
+
+---
+
+## Architecture
 
 ```
 YouTube URL
-    ↓
-Transcript Extraction (youtube-transcript-api)
-    ↓
-Intelligent Chunking (800 chars, 150 overlap)
-    ↓
-Embedding Generation (sentence-transformers)
-    ↓
-Vector Storage (FAISS)
-    ↓
-User Query
-    ├─ Study Command Detection (/notes, /mcqs)
-    │   ↓
-    │   Full Transcript Load + Chunked Summarization
-    │   ↓
-    │   LLM Generation (Plain Text Notes or MCQs)
     │
-    ├─ Timestamp Detection → Direct Lookup
-    ├─ Summary Intent → Comprehensive Retrieval
-    └─ Q&A Intent → Semantic Search (Top 5)
-    ↓
-Context Formatting (Clean, no timestamps)
-    ↓
-LLM Generation (Groq)
-    ↓
-Response with Sources
+    ├─ youtube-transcript-api (primary)
+    └─ yt-dlp (fallback)
+         │
+         ▼
+  Transcript (timestamped segments)
+         │
+         ▼
+  LangChain Text Splitter
+  (800 char chunks, 150 overlap)
+         │
+         ▼
+  Sentence Transformers Embeddings
+         │
+         ▼
+  FAISS Vector Store
+         │
+    User Query
+         │
+         ├─ /notes or /mcqs ──► Full transcript map-reduce ──► LLM
+         ├─ Timestamp query  ──► Direct segment lookup      ──► LLM
+         └─ General Q&A      ──► Top-5 semantic retrieval   ──► LLM
+                                                                 │
+                                                                 ▼
+                                                       Answer + Source Timestamps
 ```
-
-### Key Components
-
-**Retrieval System** (`backend/app/rag/`)
-- `pipeline.py`: Main RAG orchestration + study command routing
-- `retriever.py`: Hybrid retrieval (semantic + timestamp)
-- `vector_store.py`: FAISS management
-- `splitter.py`: Intelligent chunking
-
-**Agent System** (`backend/app/agents/`)
-- `learning_agent.py`: Conversational AI tutor
-- `memory.py`: Chat history management
-- `tools.py`: Utility functions
-
-**Study Materials** (`backend/app/services/`)
-- `study_material_generator.py`: Notes and MCQ generation with full context
-- Uses map-reduce pattern for long transcripts
-- Plain text notes (no JSON parsing overhead)
-
-**API Layer** (`backend/app/api/`)
-- `ingest.py`: Video processing endpoint (on-demand study materials)
-- `chat.py`: Q&A endpoint with study command detection
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-```bash
-# LLM Configuration
-GROQ_API_KEY=your_groq_api_key
-
-# Vector Database
-VECTOR_DB_TYPE=faiss
-VECTOR_DB_PATH=./vector_db
-
-# Server
-HOST=0.0.0.0
-PORT=8000
-DEBUG=False
-```
-
-### RAG Settings (`backend/app/core/config.py`)
-
-```python
-# Chunking
-chunk_size = 800          # Characters per chunk
-chunk_overlap = 150       # Overlap between chunks
-
-# Retrieval
-retrieval_top_k = 5       # Number of chunks to retrieve
-
-# Embeddings
-embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
-
-# LLM
-groq_model = "llama-3.1-8b-instant"
-```
-
-## 🎯 Prompt Engineering
-
-Our prompts are optimized for:
-- **Synthesis over extraction**: Explains concepts, doesn't just copy
-- **Length control**: Adapts response length to question complexity
-- **Anti-repetition**: Each sentence adds unique value
-- **Timestamp awareness**: Handles time-based references intelligently
-
-Example prompt structure:
-```
-INSTRUCTIONS:
-- Answer directly, no introductions
-- Simple questions: 3-4 sentences
-- Explanatory questions: 1 paragraph
-- Complex questions: 2 paragraphs max
-- If timestamp mentioned, explain content at that time
-```
-
-## 📊 Performance
-
-- **Processing Time**: 30-60 seconds per video (ingestion only)
-- **Query Response**: 2-3 seconds
-- **Notes Generation**: 15-30 seconds (full context processing)
-- **MCQ Generation**: 10-20 seconds (5 questions with options)
-- **Embedding Model**: 384 dimensions
-- **Vector Search**: Sub-second retrieval
-- **LLM Speed**: ~100 tokens/second (Groq)
-
-## 🔧 Development
 
 ### Project Structure
 
@@ -290,120 +134,87 @@ INSTRUCTIONS:
 CortexTutor/
 ├── backend/
 │   ├── app/
-│   │   ├── agents/          # AI agent logic
-│   │   ├── api/             # FastAPI endpoints
-│   │   ├── core/            # Config, LLM, middleware
-│   │   ├── rag/             # RAG pipeline
-│   │   ├── services/        # YouTube loader
-│   │   └── main.py          # App entry point
-│   ├── vector_db/           # FAISS indices
-│   ├── study_materials/     # Generated summaries
+│   │   ├── agents/        # Conversational AI + memory
+│   │   ├── api/           # FastAPI endpoints (ingest, chat)
+│   │   ├── core/          # Config, LLM init, middleware
+│   │   ├── rag/           # Pipeline, retriever, vector store, splitter
+│   │   ├── services/      # YouTube transcript loader
+│   │   └── main.py
 │   └── requirements.txt
 ├── frontend/
-│   ├── index.html           # Main UI
-│   ├── app.js              # Frontend logic
-│   └── styles.css          # ChatGPT-style theme
+│   ├── index.html
+│   ├── app.js
+│   └── styles.css
 └── README.md
 ```
 
-### Running Tests
+---
 
-```bash
-# Test RAG pipeline
-python -m backend.app.rag.pipeline
+## Deployment Challenges & Learnings
 
-# Test retriever
-python -m backend.app.rag.retriever
+A significant part of this project involved investigating why automated YouTube transcript fetching fails on cloud infrastructure — and what can be done about it.
 
-# Test memory
-python -m backend.app.agents.memory
-```
+### What was tried
 
-### Adding New Features
+| Approach | Result | Why |
+|---|---|---|
+| `youtube-transcript-api` on HF Spaces | ❌ SSLError | YouTube blocks all datacenter IPs at network level |
+| `yt-dlp` fallback on HF Spaces | ❌ Sign-in required | Same IP-level block; bot detection triggers |
+| Cloudflare Worker → YouTube InnerTube API | ❌ `LOGIN_REQUIRED` | All client types (WEB, ANDROID, IOS, TVHTML5) blocked from CF IPs |
+| Browser-side fetch via CORS proxies | ❌ 403 / timeout | Proxies themselves on datacenter IPs |
+| Browser-side fetch via Piped API | ❌ Instances down / CORS | Community instances unreliable |
+| Cloudflare Worker → Invidious API | ❌ 503 | CF IPs blocked by Invidious instances too |
+| Browser-side Invidious (direct) | ❌ No CORS headers | Most instances don't set `Access-Control-Allow-Origin` |
 
-1. **Custom Prompts**: Edit `backend/app/rag/pipeline.py`
-2. **New Endpoints**: Add to `backend/app/api/endpoints/`
-3. **UI Changes**: Modify `frontend/` files
+### Root cause
 
-## 🐛 Troubleshooting
+YouTube's bot detection operates at multiple layers:
+1. **IP reputation** — All datacenter ASNs (AWS, GCP, Cloudflare, HF Spaces) are flagged
+2. **po_token challenge** — A JavaScript-computed proof-of-origin token tied to the browser session; can't be replicated server-side without a real browser
+3. **TLS fingerprinting** — Serverless/container environments have different TLS profiles than real browsers
 
-### Common Issues
+**Result:** `youtube-transcript-api`, `yt-dlp`, and all InnerTube API client types return `LOGIN_REQUIRED` / `Sign in to confirm you're not a bot` from any cloud/serverless IP — regardless of cookies, headers, or client type.
 
-**"Vector store not found"**
-- Make sure video is ingested first
-- Check `backend/vector_db/{video_id}/` exists
+### What actually works
 
-**"Rate limit exceeded"**
-- Groq free tier: 6000 tokens/min
-- Wait a minute and retry
-- Consider upgrading Groq plan
-
-**"No transcript available"**
-- Video must have captions/subtitles
-- Try a different video
-- Check video is public
-
-**Frontend not loading**
-- Ensure backend is running on port 8000
-- Clear browser cache (Ctrl+F5)
-- Check browser console for errors
-
-**Study materials generation slow**
-- Notes/MCQs process full transcript (takes 15-30 seconds)
-- Uses chunked map-reduce for complete coverage
-- Progress shown in backend terminal logs
-
-**MCQs showing 0 questions**
-- Check backend logs for JSON parsing errors
-- Retry generation (already has retry logic)
-- May indicate rate limiting or model issues
-
-## 🚀 Deployment
-
-### Option 1: Single Server
-
-```bash
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Set environment variables
-export GROQ_API_KEY=your_key
-
-# Run with gunicorn
-gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app
-```
-
-### Option 2: Docker (Coming Soon)
-
-```bash
-docker-compose up
-```
-
-## 📝 License
-
-MIT License - feel free to use for personal or commercial projects
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## 🙏 Acknowledgments
-
-- **LangChain**: RAG framework
-- **Groq**: Lightning-fast LLM inference
-- **FAISS**: Efficient vector search
-- **FastAPI**: Modern Python web framework
-
-## 📧 Contact
-
-For questions or feedback, open an issue on GitHub.
+- **Local machine** — Residential IP + real Chrome session = no blocks. All transcript methods work natively.
+- **Dedicated VPS with static IP** (e.g., Hetzner, Oracle Cloud) — Persistent IP not flagged by YouTube; server-side fetch works reliably.
+- **Manual paste fallback** — UI allows pasting transcript directly from YouTube's "Show transcript" feature as a last resort.
 
 ---
 
-**Built with ❤️ for learners everywhere**
+## Configuration
 
-*Turn any YouTube video into an interactive learning experience* 🎓
+```bash
+# Required
+GROQ_API_KEY=your_groq_api_key
+
+# Optional (defaults shown)
+VECTOR_DB_TYPE=faiss
+VECTOR_DB_PATH=./vector_db
+HOST=0.0.0.0
+PORT=8000
+DEBUG=False
+```
+
+---
+
+## Troubleshooting
+
+**"No transcript available"** — Video must have captions enabled. Check YouTube → ⋯ More → Show transcript.
+
+**"Rate limit exceeded"** — Groq free tier is 6000 tokens/min. Wait 60s and retry.
+
+**Transcript fetch fails on cloud** — Expected. See Deployment Challenges above. Run locally or use the manual paste fallback.
+
+**Frontend not loading** — Ensure backend is running on port 8000. Hard refresh with `Ctrl+Shift+R`.
+
+---
+
+## License
+
+MIT — free to use, modify, and distribute.
+
+---
+
+*Built to explore RAG pipelines, LLM integration, and the real-world constraints of deploying AI tools that depend on third-party data sources.*
