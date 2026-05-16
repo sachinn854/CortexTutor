@@ -53,6 +53,7 @@ def _load_transcript_with_ytdlp(video_id: str) -> Dict:
     from cloud/hosted environments where direct YouTube access is blocked.
     """
     import yt_dlp
+    import concurrent.futures
 
     url = f"https://www.youtube.com/watch?v={video_id}"
     print(f"   Trying yt-dlp fallback for {video_id}...")
@@ -65,12 +66,22 @@ def _load_transcript_with_ytdlp(video_id: str) -> Dict:
         "subtitlesformat": "json3",
         "quiet": True,
         "no_warnings": True,
+        "socket_timeout": 20,
         # Use Innertube API — avoids normal web scraping restrictions
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    def _run_ydl():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(url, download=False)
+
+    # Run in thread with 45-second hard timeout so we don't block the event loop
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run_ydl)
+        try:
+            info = future.result(timeout=45)
+        except concurrent.futures.TimeoutError:
+            raise ConnectionError("yt-dlp timed out after 45 seconds")
 
     if not info:
         raise ConnectionError("yt-dlp could not retrieve video info")

@@ -11,14 +11,39 @@ const messagesDiv = document.getElementById('messages');
 const userInput   = document.getElementById('user-input');
 const sendBtn     = document.getElementById('send-btn');
 
+// ── Fetch with timeout ────────────────────────────────────────
+async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return res;
+    } catch (err) {
+        clearTimeout(id);
+        if (err.name === 'AbortError') throw new Error('Request timed out after 2 minutes. The server may be overloaded.');
+        throw err;
+    }
+}
+
 // ── Init ──────────────────────────────────────────────────────
 function init() {
     addWelcomeCard();
+    checkBackendHealth();
 
     sendBtn.addEventListener('click', handleSend);
     userInput.addEventListener('keypress', e => {
         if (e.key === 'Enter' && !state.isProcessing) handleSend();
     });
+}
+
+async function checkBackendHealth() {
+    try {
+        const res = await fetch('/health', { method: 'GET' });
+        if (!res.ok) addBotMessage('**Warning:** Backend returned an error on startup. Try refreshing.');
+    } catch {
+        addBotMessage('**Backend starting…** The server is waking up. Please wait 30 seconds and refresh the page.');
+    }
 }
 
 // ── Welcome Card ──────────────────────────────────────────────
@@ -70,11 +95,11 @@ async function processVideo(url) {
     const loadingId = addBotMessage('Processing video… this may take 30–60 seconds.', true);
 
     try {
-        const res  = await fetch(API + '/ingest/video', {
+        const res  = await fetchWithTimeout(API + '/ingest/video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
-        });
+        }, 120000);
         const data = await res.json();
         removeMessage(loadingId);
 
@@ -127,7 +152,7 @@ async function askQuestion(question) {
     const loadingId = addBotMessage('', true, true);
 
     try {
-        const res  = await fetch(API + '/chat/ask', {
+        const res  = await fetchWithTimeout(API + '/chat/ask', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -135,7 +160,7 @@ async function askQuestion(question) {
                 question,
                 session_id: state.sessionId
             })
-        });
+        }, 60000);
         const data = await res.json();
         removeMessage(loadingId);
 
@@ -174,7 +199,7 @@ async function handleStudyCommand(command, originalQuestion) {
     const loadingId = addBotMessage(`Generating ${label}…`, true);
 
     try {
-        const res  = await fetch(API + '/chat/ask', {
+        const res  = await fetchWithTimeout(API + '/chat/ask', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -182,7 +207,7 @@ async function handleStudyCommand(command, originalQuestion) {
                 question:   originalQuestion,
                 session_id: state.sessionId
             })
-        });
+        }, 90000);
         const data = await res.json();
         removeMessage(loadingId);
 
