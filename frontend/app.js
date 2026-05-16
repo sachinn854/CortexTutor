@@ -145,15 +145,26 @@ function parseVTT(text) {
     return lines;
 }
 
+const CF_WORKER = 'https://nameless-wind-aae4.cs23b1042.workers.dev/';
+
 // ── Browser-side Transcript Fetch ────────────────────────────
 async function fetchTranscriptInBrowser(videoId) {
-    // Primary: Invidious API (CORS-enabled, community-run, user's residential IP)
+    // Primary: CF Worker → calls Invidious server-side (no YouTube block)
+    try {
+        const r = await fetchWithTimeout(`${CF_WORKER}?v=${videoId}`, {}, 25000);
+        const data = await r.json();
+        if (data.transcript) return data.transcript;
+        throw new Error(data.error || 'Worker returned empty transcript');
+    } catch(e) {
+        console.warn('CF Worker failed:', e.message);
+    }
+    // Secondary: Invidious direct (may have CORS issues on some instances)
     try {
         return await fetchTranscriptViaInvidious(videoId);
     } catch(e) {
         console.warn('Invidious failed:', e.message);
     }
-    // Secondary: Piped API
+    // Tertiary: Piped API
     try {
         return await fetchTranscriptViaPiped(videoId);
     } catch(e) {
