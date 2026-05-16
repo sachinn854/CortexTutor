@@ -23,13 +23,14 @@ An intelligent learning assistant that transforms any YouTube video into an inte
 
 ## Demo
 
-> Run locally (see Quick Start below) and paste any YouTube URL with captions.
+**Video loaded — embedded player + transcript ingested into FAISS**
+![Video loaded](demo/Screenshot%202026-05-16%20232815.png)
 
-**Example interactions:**
-- *"What is this lecture about?"*
-- *"Explain what was said at 3:20"*
-- *"Generate study notes"*
-- *"/mcqs — make a quiz from this video"*
+**MCQ Quiz generated from lecture content**
+![MCQ Quiz](demo/Screenshot%202026-05-16%20232836.png)
+
+**Auto Study Notes generated**
+![Study Notes](demo/Screenshot%202026-05-16%20232850.png)
 
 ---
 
