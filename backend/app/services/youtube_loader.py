@@ -81,9 +81,9 @@ def _load_transcript_with_ytdlp(video_id: str) -> Dict:
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_run_ydl)
         try:
-            info = future.result(timeout=45)
+            info = future.result(timeout=8)
         except concurrent.futures.TimeoutError:
-            raise ConnectionError("yt-dlp timed out after 45 seconds")
+            raise ConnectionError("yt-dlp timed out after 8 seconds")
 
     if not info:
         raise ConnectionError("yt-dlp could not retrieve video info")

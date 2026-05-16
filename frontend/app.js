@@ -1,6 +1,5 @@
 // Relative URL — works on localhost AND on HF Spaces without any change
 const API = "/api";
-const CORS_PROXY = "https://corsproxy.io/?";
 
 let state = {
     videoId: null,
@@ -12,7 +11,7 @@ const messagesDiv = document.getElementById('messages');
 const userInput   = document.getElementById('user-input');
 const sendBtn     = document.getElementById('send-btn');
 
-// ── Fetch with timeout ────────────────────────────────────────
+// ── Fetch helpers ─────────────────────────────────────────────
 async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -25,6 +24,24 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
         if (err.name === 'AbortError') throw new Error('Request timed out.');
         throw err;
     }
+}
+
+// Fetches a URL through a CORS proxy, trying corsproxy.io then allorigins.win.
+async function proxyFetch(targetUrl, timeoutMs = 25000) {
+    try {
+        const r = await fetchWithTimeout(
+            'https://corsproxy.io/?' + encodeURIComponent(targetUrl), {}, timeoutMs
+        );
+        if (r.ok) return await r.text();
+    } catch(e) { /* fall through to second proxy */ }
+
+    const r2 = await fetchWithTimeout(
+        'https://api.allorigins.win/get?url=' + encodeURIComponent(targetUrl), {}, timeoutMs
+    );
+    if (!r2.ok) throw new Error(`All proxies failed (${r2.status})`);
+    const j = await r2.json();
+    if (!j.contents) throw new Error('Proxy returned empty content');
+    return j.contents;
 }
 
 // ── Init ──────────────────────────────────────────────────────
@@ -94,12 +111,9 @@ function extractVideoId(url) {
 // ── Browser-side Transcript Fetch (via CORS proxy) ────────────
 async function fetchTranscriptInBrowser(videoId) {
     const pageUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const proxied = CORS_PROXY + encodeURIComponent(pageUrl);
 
-    // Fetch the YouTube page HTML through the CORS proxy
-    const pageRes = await fetchWithTimeout(proxied, {}, 25000);
-    if (!pageRes.ok) throw new Error(`Proxy returned ${pageRes.status}`);
-    const html = await pageRes.text();
+    // Fetch the YouTube page HTML — tries corsproxy.io then allorigins.win
+    const html = await proxyFetch(pageUrl, 25000);
 
     // Extract ytInitialPlayerResponse JSON using brace-depth counting
     const marker = 'ytInitialPlayerResponse = ';
@@ -128,9 +142,8 @@ async function fetchTranscriptInBrowser(videoId) {
     const captionUrl = track.baseUrl + '&fmt=json3';
 
     // Fetch the actual captions
-    const captRes = await fetchWithTimeout(CORS_PROXY + encodeURIComponent(captionUrl), {}, 20000);
-    if (!captRes.ok) throw new Error(`Caption fetch failed: ${captRes.status}`);
-    const capData = await captRes.json();
+    const captText = await proxyFetch(captionUrl, 20000);
+    const capData = JSON.parse(captText);
 
     // Parse json3 events into timestamped text
     const events = capData.events || [];
@@ -159,7 +172,7 @@ async function processVideo(url) {
     if (wc) wc.remove();
 
     addUserMessage(url);
-    let loadingId = addBotMessage('Processing video… this may take 30–60 seconds.', true);
+    let loadingId = addBotMessage('Fetching transcript…', true);
 
     let serverBlocked = false;
 
