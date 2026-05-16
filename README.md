@@ -1,13 +1,3 @@
----
-title: CortexTutor
-emoji: 🎓
-colorFrom: purple
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # CortexTutor — AI-Powered YouTube Learning Assistant
 
 An intelligent learning assistant that transforms any YouTube video into an interactive study session. Built with a full RAG (Retrieval-Augmented Generation) pipeline, it extracts video transcripts, builds a semantic knowledge base, and answers questions with pinpoint timestamp references.
