@@ -36,11 +36,11 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Add rate limiting middleware (updated for better performance)
+# Add rate limiting middleware
 app.add_middleware(
-    RateLimitMiddleware, 
-    requests_per_minute=10,  # 10 requests/min (conservative)
-    max_tokens_per_minute=5500  # 5500 tokens/min (increased for study materials)
+    RateLimitMiddleware,
+    requests_per_minute=60,
+    max_tokens_per_minute=5500
 )
 
 # Add timeout middleware (5 minutes for long operations)
