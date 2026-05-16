@@ -145,15 +145,26 @@ function parseVTT(text) {
     return lines;
 }
 
+const CF_WORKER = 'https://nameless-wind-aae4.cs23b1042.workers.dev/';
+
 // ── Browser-side Transcript Fetch ────────────────────────────
 async function fetchTranscriptInBrowser(videoId) {
-    // Primary: Piped API — CORS-enabled, no proxy needed, designed for browser use
+    // Primary: Cloudflare Worker (reliable, no CORS issues)
+    try {
+        const r = await fetchWithTimeout(`${CF_WORKER}?v=${videoId}`, {}, 30000);
+        const data = await r.json();
+        if (data.transcript) return data.transcript;
+        throw new Error(data.error || 'Worker returned empty transcript');
+    } catch(e) {
+        console.warn('CF Worker failed:', e.message);
+    }
+    // Fallback: Piped API
     try {
         return await fetchTranscriptViaPiped(videoId);
     } catch(e) {
         console.warn('Piped API failed:', e.message);
     }
-    // Fallback: scrape YouTube page via CORS proxy
+    // Last resort: CORS proxy scrape
     return await fetchTranscriptViaScrape(videoId);
 }
 
